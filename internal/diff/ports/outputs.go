@@ -27,3 +27,8 @@ type RendererPort interface {
 type ReportingPort interface {
 	PostResult(ctx context.Context, pr domain.PRContext, results []domain.DiffResult) error
 }
+
+// FileChangesPort abstracts checking which files have been modified in a PR.
+type FileChangesPort interface {
+	GetChangedFiles(ctx context.Context, owner, repo string, prNumber int, installationID int64) ([]string, error)
+}

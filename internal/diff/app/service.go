@@ -14,13 +14,14 @@ import (
 )
 
 // DiffService implements ports.DiffUseCase by orchestrating the full
-// chart diff workflow: fetch config, fetch chart files for both refs,
-// render, compute diffs, and report.
+// chart diff workflow: fetch config, check for chart changes, fetch chart files
+// for both refs, render, compute diffs, and report.
 type DiffService struct {
 	sourceControl ports.SourceControlPort
 	configOrder   ports.ConfigOrderingPort
 	renderer      ports.RendererPort
 	reporter      ports.ReportingPort
+	fileChanges   ports.FileChangesPort
 	logger        *slog.Logger
 }
 
@@ -30,6 +31,7 @@ func NewDiffService(
 	co ports.ConfigOrderingPort,
 	rn ports.RendererPort,
 	rp ports.ReportingPort,
+	fc ports.FileChangesPort,
 	logger *slog.Logger,
 ) *DiffService {
 	return &DiffService{
@@ -37,12 +39,32 @@ func NewDiffService(
 		configOrder:   co,
 		renderer:      rn,
 		reporter:      rp,
+		fileChanges:   fc,
 		logger:        logger,
 	}
 }
 
 // Execute runs the diff workflow for a pull request.
 func (s *DiffService) Execute(ctx context.Context, pr domain.PRContext) error {
+	// Check if any files in the charts/ directory have been modified
+	changedFiles, err := s.fileChanges.GetChangedFiles(ctx, pr.Owner, pr.Repo, pr.PRNumber, pr.InstallationID)
+	if err != nil {
+		return fmt.Errorf("fetching changed files: %w", err)
+	}
+
+	hasChartChanges := false
+	for _, file := range changedFiles {
+		if strings.HasPrefix(file, "charts/") {
+			hasChartChanges = true
+			break
+		}
+	}
+
+	if !hasChartChanges {
+		s.logger.Info("no changes to charts/ directory, skipping diff")
+		return nil
+	}
+
 	configs, err := s.configOrder.GetOrdering(ctx, pr.Owner, pr.Repo, pr.HeadRef, pr.InstallationID)
 	if err != nil {
 		return fmt.Errorf("getting config ordering: %w", err)

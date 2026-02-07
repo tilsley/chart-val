@@ -13,6 +13,7 @@ import (
 	"github.com/nathantilsley/chart-sentry/internal/diff/adapters/github_in"
 	"github.com/nathantilsley/chart-sentry/internal/diff/adapters/github_out"
 	"github.com/nathantilsley/chart-sentry/internal/diff/adapters/helm_cli"
+	"github.com/nathantilsley/chart-sentry/internal/diff/adapters/pr_files"
 	"github.com/nathantilsley/chart-sentry/internal/diff/adapters/repo_cfg"
 	"github.com/nathantilsley/chart-sentry/internal/diff/adapters/source_ctrl"
 	"github.com/nathantilsley/chart-sentry/internal/diff/app"
@@ -49,9 +50,10 @@ func run() error {
 		return fmt.Errorf("creating helm adapter: %w", err)
 	}
 	reporter := githubout.New(clientFactory)
+	fileChanges := prfiles.New(clientFactory)
 
 	// Domain service
-	diffService := app.NewDiffService(sourceCtrl, repoCfg, helmRenderer, reporter, log)
+	diffService := app.NewDiffService(sourceCtrl, repoCfg, helmRenderer, reporter, fileChanges, log)
 
 	// Webhook handler
 	webhookHandler := githubin.NewWebhookHandler(diffService, cfg.WebhookSecret, log)
