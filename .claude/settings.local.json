@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/nathantilsley/repos/chart-sentry log --oneline --all)",
+      "Bash(go version:*)",
+      "Bash(helm version:*)",
+      "WebSearch",
+      "Bash(go mod tidy:*)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(go test:*)",
+      "Bash(make:*)",
+      "Bash(./bin/chart-sentry-cli:*)",
+      "Bash(echo:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

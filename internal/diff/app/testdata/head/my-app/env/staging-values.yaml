@@ -1,0 +1,6 @@
+replicaCount: 3
+logLevel: debug
+
+env:
+  - name: ENABLE_CACHE
+    value: "true"

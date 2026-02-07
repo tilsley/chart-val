@@ -1,0 +1,14 @@
+replicaCount: 5
+logLevel: warn
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+env:
+  - name: ENABLE_CACHE
+    value: "true"

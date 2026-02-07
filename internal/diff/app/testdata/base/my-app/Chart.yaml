@@ -1,0 +1,5 @@
+apiVersion: v2
+name: my-app
+description: A sample application chart
+version: 0.1.0
+type: application
