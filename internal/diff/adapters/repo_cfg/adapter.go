@@ -74,14 +74,14 @@ func (a *Adapter) GetOrdering(ctx context.Context, owner, repo, ref string, inst
 }
 
 // getDefaultConfig returns a default configuration that monitors all charts
-// in the charts/ directory with standard environments using env-values.yaml pattern.
+// in the charts/ directory with standard environments using env/{env}-values.yaml pattern.
 func getDefaultConfig() []domain.ChartConfig {
-	// Create environments with {env}-values.yaml pattern
+	// Create environments with env/{env}-values.yaml pattern
 	envs := make([]domain.EnvironmentConfig, 0, len(defaultEnvironments))
 	for _, env := range defaultEnvironments {
 		envs = append(envs, domain.EnvironmentConfig{
 			Name:       env,
-			ValueFiles: []string{env + "-values.yaml"},
+			ValueFiles: []string{"env/" + env + "-values.yaml"},
 		})
 	}
 
