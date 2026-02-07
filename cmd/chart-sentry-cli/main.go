@@ -155,10 +155,13 @@ func run() error {
 }
 
 // parsePRURL extracts owner, repo, and PR number from a GitHub PR URL
-// Expected format: https://github.com/owner/repo/pull/123
+// Handles formats:
+//   - https://github.com/owner/repo/pull/123
+//   - https://github.com/owner/repo/pull/123/changes
+//   - https://github.com/owner/repo/pull/123/files
 func parsePRURL(url string) (string, string, int, error) {
-	// Handle both http and https URLs
-	re := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/(\d+)`)
+	// Handle both http and https URLs, with optional trailing paths
+	re := regexp.MustCompile(`github\.com/([^/]+)/([^/]+)/pull/(\d+)(?:/.*)?$`)
 	matches := re.FindStringSubmatch(url)
 
 	if len(matches) != 4 {
