@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Chart.Name }}
+  name: {{ .Release.Name }}
   labels:
     app: {{ .Values.labels.app }}
     component: {{ .Values.labels.component }}
@@ -19,7 +19,7 @@ spec:
         component: {{ .Values.labels.component }}
     spec:
       containers:
-        - name: {{ .Chart.Name }}
+        - name: {{ .Release.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
@@ -30,17 +30,17 @@ spec:
             - name: APP_NAME
               valueFrom:
                 configMapKeyRef:
-                  name: {{ .Chart.Name }}-config
+                  name: {{ .Release.Name }}-config
                   key: appName
             - name: ENVIRONMENT
               valueFrom:
                 configMapKeyRef:
-                  name: {{ .Chart.Name }}-config
+                  name: {{ .Release.Name }}-config
                   key: environment
             - name: DEBUG
               valueFrom:
                 configMapKeyRef:
-                  name: {{ .Chart.Name }}-config
+                  name: {{ .Release.Name }}-config
                   key: debug
           resources:
             requests:
