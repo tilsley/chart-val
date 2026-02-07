@@ -1,0 +1,29 @@
+# Default values for test-chart
+replicaCount: 2
+
+image:
+  repository: nginx
+  tag: "1.21.0"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+  targetPort: 80
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi
+
+config:
+  appName: test-application
+  environment: development
+  debug: "false"
+
+labels:
+  app: test-chart
+  component: frontend
