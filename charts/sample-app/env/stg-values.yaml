@@ -1,0 +1,22 @@
+replicaCount: 2
+
+image:
+  tag: "1.21.0-stg"
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+env:
+  LOG_LEVEL: "info"
+  ENVIRONMENT: "staging"
+  MONITORING_ENABLED: "true"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
