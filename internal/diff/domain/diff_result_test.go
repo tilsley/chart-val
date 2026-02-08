@@ -2,6 +2,28 @@ package domain
 
 import "testing"
 
+func TestStatus_String(t *testing.T) {
+	tests := []struct {
+		status Status
+		want   string
+	}{
+		{StatusSuccess, "Success"},
+		{StatusChanges, "Changes"},
+		{StatusError, "Error"},
+		{Status(99), "Unknown"}, // Invalid status
+		{Status(-1), "Unknown"}, // Negative status
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			got := tt.status.String()
+			if got != tt.want {
+				t.Errorf("Status.String() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestDiffResult_PreferredDiff(t *testing.T) {
 	tests := []struct {
 		name         string

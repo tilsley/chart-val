@@ -10,17 +10,18 @@ const (
 )
 
 // String returns the string representation of the Status.
+// Implements the Stringer interface.
 func (s Status) String() string {
-	switch s {
-	case StatusSuccess:
-		return "success"
-	case StatusChanges:
-		return "changes"
-	case StatusError:
-		return "error"
-	default:
-		return "unknown"
+	if s < 0 || int(s) >= len(statusNames) {
+		return "Unknown"
 	}
+	return statusNames[s]
+}
+
+var statusNames = [...]string{
+	StatusSuccess: "Success",
+	StatusChanges: "Changes",
+	StatusError:   "Error",
 }
 
 // DiffResult represents the diff output for a single chart + environment pair.
