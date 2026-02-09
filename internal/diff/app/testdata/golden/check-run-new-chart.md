@@ -1,7 +1,7 @@
-# chart-sentry: new-chart
+# chart-val: new-chart
 
 **Status:** completed
-**Conclusion:** neutral
+**Conclusion:** success
 
 ## Helm diff — new-chart
 

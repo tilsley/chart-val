@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
 func TestAdapter_DiscoverEnvironments(t *testing.T) {

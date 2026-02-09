@@ -13,7 +13,7 @@ import (
 
 	gogithub "github.com/google/go-github/v68/github"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
 // Adapter implements ports.SourceControlPort by downloading a repo
@@ -54,7 +54,7 @@ func (a *Adapter) FetchChartFiles(ctx context.Context, owner, repo, ref, chartPa
 		return "", nil, fmt.Errorf("unexpected status downloading archive: %d", resp.StatusCode)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "chart-sentry-*")
+	tmpDir, err := os.MkdirTemp("", "chart-val-*")
 	if err != nil {
 		return "", nil, fmt.Errorf("creating temp dir: %w", err)
 	}

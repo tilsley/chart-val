@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
 // Adapter implements ports.EnvironmentDiscoveryPort by scanning the chart's

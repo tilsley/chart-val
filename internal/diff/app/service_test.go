@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
-	"github.com/nathantilsley/chart-sentry/internal/platform/logger"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/platform/logger"
 )
 
 // Mock adapters for testing

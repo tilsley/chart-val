@@ -19,17 +19,17 @@ import (
 
 	"github.com/google/go-github/v68/github"
 
-	dyffdiff "github.com/nathantilsley/chart-sentry/internal/diff/adapters/dyff_diff"
-	envdiscovery "github.com/nathantilsley/chart-sentry/internal/diff/adapters/env_discovery"
-	githubin "github.com/nathantilsley/chart-sentry/internal/diff/adapters/github_in"
-	githubout "github.com/nathantilsley/chart-sentry/internal/diff/adapters/github_out"
-	helmcli "github.com/nathantilsley/chart-sentry/internal/diff/adapters/helm_cli"
-	linediff "github.com/nathantilsley/chart-sentry/internal/diff/adapters/line_diff"
-	prfiles "github.com/nathantilsley/chart-sentry/internal/diff/adapters/pr_files"
-	sourcectrl "github.com/nathantilsley/chart-sentry/internal/diff/adapters/source_ctrl"
-	"github.com/nathantilsley/chart-sentry/internal/diff/app"
-	ghclient "github.com/nathantilsley/chart-sentry/internal/platform/github"
-	"github.com/nathantilsley/chart-sentry/internal/platform/logger"
+	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
+	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
+	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
+	githubout "github.com/nathantilsley/chart-val/internal/diff/adapters/github_out"
+	helmcli "github.com/nathantilsley/chart-val/internal/diff/adapters/helm_cli"
+	linediff "github.com/nathantilsley/chart-val/internal/diff/adapters/line_diff"
+	prfiles "github.com/nathantilsley/chart-val/internal/diff/adapters/pr_files"
+	sourcectrl "github.com/nathantilsley/chart-val/internal/diff/adapters/source_ctrl"
+	"github.com/nathantilsley/chart-val/internal/diff/app"
+	ghclient "github.com/nathantilsley/chart-val/internal/platform/github"
+	"github.com/nathantilsley/chart-val/internal/platform/logger"
 )
 
 // TestE2E_FullWorkflow creates a real PR, triggers diff, and verifies results.
@@ -46,7 +46,7 @@ func TestE2E_FullWorkflow(t *testing.T) {
 
 	// Test configuration
 	owner := getEnvOrDefault("E2E_OWNER", "tilsley")
-	repo := getEnvOrDefault("E2E_REPO", "chart-sentry")
+	repo := getEnvOrDefault("E2E_REPO", "chart-val")
 	baseBranch := getEnvOrDefault("E2E_BASE_BRANCH", "main")
 	webhookSecret := getEnvOrDefault("WEBHOOK_SECRET", "test")
 
@@ -79,8 +79,8 @@ func TestE2E_FullWorkflow(t *testing.T) {
 	t.Logf("Cleaning up orphaned e2e-test branches...")
 	cleanupOrphanedBranches(ctx, client, owner, repo, t)
 
-	// Set up chart-sentry test server
-	t.Logf("Starting chart-sentry test server...")
+	// Set up chart-val test server
+	t.Logf("Starting chart-val test server...")
 	testServer := setupTestServer(t, appID, installationID, privateKey, webhookSecret)
 	defer testServer.Close()
 	t.Logf("Test server running at %s", testServer.URL)
@@ -136,7 +136,7 @@ func TestE2E_FullWorkflow(t *testing.T) {
 	t.Logf("Verifying check runs...")
 	foundChartSentry := false
 	for _, run := range checkRuns {
-		if strings.HasPrefix(run.GetName(), "chart-sentry:") {
+		if strings.HasPrefix(run.GetName(), "chart-val:") {
 			foundChartSentry = true
 			t.Logf("Found check run: %s (status: %s, conclusion: %s)",
 				run.GetName(), run.GetStatus(), run.GetConclusion())
@@ -161,7 +161,7 @@ func TestE2E_FullWorkflow(t *testing.T) {
 	}
 
 	if !foundChartSentry {
-		t.Error("No chart-sentry check runs found")
+		t.Error("No chart-val check runs found")
 	}
 
 	// Step 8: Verify PR comments
@@ -176,7 +176,7 @@ func TestE2E_FullWorkflow(t *testing.T) {
 		body := comment.GetBody()
 		if strings.Contains(body, "Helm Diff Report") {
 			foundComment = true
-			t.Logf("Found chart-sentry comment (length: %d chars)", len(body))
+			t.Logf("Found chart-val comment (length: %d chars)", len(body))
 
 			// Verify comment contains expected elements
 			if !strings.Contains(body, "Status:") {
@@ -189,7 +189,7 @@ func TestE2E_FullWorkflow(t *testing.T) {
 	}
 
 	if !foundComment {
-		t.Error("No chart-sentry PR comment found")
+		t.Error("No chart-val PR comment found")
 	}
 
 	t.Logf("✅ E2E test completed successfully")
@@ -208,7 +208,7 @@ func TestE2E_HelmTemplateFailure(t *testing.T) {
 
 	// Test configuration
 	owner := getEnvOrDefault("E2E_OWNER", "tilsley")
-	repo := getEnvOrDefault("E2E_REPO", "chart-sentry")
+	repo := getEnvOrDefault("E2E_REPO", "chart-val")
 	baseBranch := getEnvOrDefault("E2E_BASE_BRANCH", "main")
 	webhookSecret := getEnvOrDefault("WEBHOOK_SECRET", "test")
 
@@ -242,7 +242,7 @@ func TestE2E_HelmTemplateFailure(t *testing.T) {
 	cleanupOrphanedBranches(ctx, client, owner, repo, t)
 
 	// Set up test server
-	t.Logf("Starting chart-sentry test server...")
+	t.Logf("Starting chart-val test server...")
 	testServer := setupTestServer(t, appID, installationID, privateKey, webhookSecret)
 	defer testServer.Close()
 	t.Logf("Test server running at %s", testServer.URL)
@@ -296,7 +296,7 @@ func TestE2E_HelmTemplateFailure(t *testing.T) {
 	t.Logf("Verifying check runs show failure...")
 	foundFailure := false
 	for _, run := range checkRuns {
-		if strings.HasPrefix(run.GetName(), "chart-sentry:") {
+		if strings.HasPrefix(run.GetName(), "chart-val:") {
 			t.Logf("Found check run: %s (status: %s, conclusion: %s)",
 				run.GetName(), run.GetStatus(), run.GetConclusion())
 
@@ -327,7 +327,7 @@ func TestE2E_NoChartChanges(t *testing.T) {
 
 	// Test configuration
 	owner := getEnvOrDefault("E2E_OWNER", "tilsley")
-	repo := getEnvOrDefault("E2E_REPO", "chart-sentry")
+	repo := getEnvOrDefault("E2E_REPO", "chart-val")
 	baseBranch := getEnvOrDefault("E2E_BASE_BRANCH", "main")
 	webhookSecret := getEnvOrDefault("WEBHOOK_SECRET", "test")
 
@@ -413,14 +413,14 @@ func TestE2E_NoChartChanges(t *testing.T) {
 
 	foundChartSentry := false
 	for _, run := range checkRuns.CheckRuns {
-		if strings.HasPrefix(run.GetName(), "chart-sentry:") {
+		if strings.HasPrefix(run.GetName(), "chart-val:") {
 			foundChartSentry = true
 			t.Errorf("Unexpected check run found: %s", run.GetName())
 		}
 	}
 
 	if foundChartSentry {
-		t.Error("Expected no chart-sentry check runs for non-chart changes")
+		t.Error("Expected no chart-val check runs for non-chart changes")
 	} else {
 		t.Logf("✓ Correctly skipped check runs for non-chart changes")
 	}
@@ -441,7 +441,7 @@ func TestE2E_ChartWithEnvironments(t *testing.T) {
 
 	// Test configuration
 	owner := getEnvOrDefault("E2E_OWNER", "tilsley")
-	repo := getEnvOrDefault("E2E_REPO", "chart-sentry")
+	repo := getEnvOrDefault("E2E_REPO", "chart-val")
 	baseBranch := getEnvOrDefault("E2E_BASE_BRANCH", "main")
 	webhookSecret := getEnvOrDefault("WEBHOOK_SECRET", "test")
 
@@ -526,7 +526,7 @@ func TestE2E_ChartWithEnvironments(t *testing.T) {
 	t.Logf("Verifying check runs include all environments...")
 	foundChartSentry := false
 	for _, run := range checkRuns {
-		if strings.HasPrefix(run.GetName(), "chart-sentry:") {
+		if strings.HasPrefix(run.GetName(), "chart-val:") {
 			foundChartSentry = true
 			t.Logf("Found check run: %s", run.GetName())
 
@@ -552,7 +552,7 @@ func TestE2E_ChartWithEnvironments(t *testing.T) {
 	}
 
 	if !foundChartSentry {
-		t.Error("No chart-sentry check runs found")
+		t.Error("No chart-val check runs found")
 	}
 
 	// Verify PR comment mentions all environments
@@ -578,7 +578,7 @@ func TestE2E_ChartWithEnvironments(t *testing.T) {
 	}
 
 	if !foundComment {
-		t.Error("No chart-sentry PR comment found")
+		t.Error("No chart-val PR comment found")
 	}
 
 	t.Logf("✅ E2E multi-environment test completed successfully")
@@ -598,7 +598,7 @@ func TestE2E_UpdateExistingChart(t *testing.T) {
 
 	// Test configuration
 	owner := getEnvOrDefault("E2E_OWNER", "tilsley")
-	repo := getEnvOrDefault("E2E_REPO", "chart-sentry")
+	repo := getEnvOrDefault("E2E_REPO", "chart-val")
 	baseBranch := getEnvOrDefault("E2E_BASE_BRANCH", "main")
 	webhookSecret := getEnvOrDefault("WEBHOOK_SECRET", "test")
 
@@ -714,7 +714,7 @@ func TestE2E_UpdateExistingChart(t *testing.T) {
 	t.Logf("Verifying check runs show actual diffs...")
 	foundChartSentry := false
 	for _, run := range checkRuns {
-		if strings.HasPrefix(run.GetName(), "chart-sentry:") {
+		if strings.HasPrefix(run.GetName(), "chart-val:") {
 			foundChartSentry = true
 			t.Logf("Found check run: %s", run.GetName())
 
@@ -752,7 +752,7 @@ func TestE2E_UpdateExistingChart(t *testing.T) {
 	}
 
 	if !foundChartSentry {
-		t.Error("No chart-sentry check runs found")
+		t.Error("No chart-val check runs found")
 	}
 
 	// Step 9: Verify PR comment
@@ -776,7 +776,7 @@ func TestE2E_UpdateExistingChart(t *testing.T) {
 	}
 
 	if !foundComment {
-		t.Error("No chart-sentry PR comment found")
+		t.Error("No chart-val PR comment found")
 	}
 
 	t.Logf("✅ E2E update-existing-chart test completed successfully")
@@ -1030,10 +1030,10 @@ func waitForCheckRuns(ctx context.Context, client *github.Client, owner, repo, r
 			return nil, err
 		}
 
-		// Check if any chart-sentry check runs are completed
+		// Check if any chart-val check runs are completed
 		completed := false
 		for _, run := range result.CheckRuns {
-			if strings.HasPrefix(run.GetName(), "chart-sentry:") && run.GetStatus() == "completed" {
+			if strings.HasPrefix(run.GetName(), "chart-val:") && run.GetStatus() == "completed" {
 				completed = true
 				break
 			}

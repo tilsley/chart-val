@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
-	"github.com/nathantilsley/chart-sentry/internal/diff/ports"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/ports"
 )
 
 // DiffService implements ports.DiffUseCase by orchestrating the full

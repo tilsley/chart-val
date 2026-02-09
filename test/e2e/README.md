@@ -1,17 +1,17 @@
 # End-to-End Tests
 
-These tests create real GitHub PRs and verify the complete chart-sentry workflow.
+These tests create real GitHub PRs and verify the complete chart-val workflow.
 
 ## Prerequisites
 
 1. **GitHub Token**: Create a personal access token with `repo` scope
-2. **GitHub App Credentials**: Same credentials used to run chart-sentry
+2. **GitHub App Credentials**: Same credentials used to run chart-val
    - `GITHUB_APP_ID`
    - `GITHUB_PRIVATE_KEY`
 3. **Helm**: Installed and available on PATH
 4. **Test Repository**: Access to a repository where PRs can be created
 
-**Note:** The test uses Go's `httptest.Server` to run the chart-sentry webhook handler - this is the idiomatic Go pattern for E2E HTTP testing!
+**Note:** The test uses Go's `httptest.Server` to run the chart-val webhook handler - this is the idiomatic Go pattern for E2E HTTP testing!
 
 ## Running E2E Tests
 
@@ -26,7 +26,7 @@ export GITHUB_PRIVATE_KEY="$(cat /path/to/your/private-key.pem)"
 
 # Optional: customize test repository
 export E2E_OWNER="your-github-username"  # default: derived from GITHUB_TOKEN
-export E2E_REPO="your-test-repo"         # default: chart-sentry
+export E2E_REPO="your-test-repo"         # default: chart-val
 export E2E_BASE_BRANCH="main"            # default: main
 export E2E_INSTALLATION_ID="your-installation-id"  # from your GitHub App
 ```
@@ -49,7 +49,7 @@ go test ./test/e2e -v -timeout 5m
 
 ## What the Test Does
 
-1. ✅ Starts chart-sentry test server (httptest.Server with webhook handler)
+1. ✅ Starts chart-val test server (httptest.Server with webhook handler)
 2. ✅ Creates a test branch from `main`
 3. ✅ Adds a test chart with Chart.yaml and templates
 4. ✅ Opens a draft PR

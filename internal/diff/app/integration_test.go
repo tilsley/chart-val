@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
-	dyffdiff "github.com/nathantilsley/chart-sentry/internal/diff/adapters/dyff_diff"
-	envdiscovery "github.com/nathantilsley/chart-sentry/internal/diff/adapters/env_discovery"
-	helmcli "github.com/nathantilsley/chart-sentry/internal/diff/adapters/helm_cli"
-	linediff "github.com/nathantilsley/chart-sentry/internal/diff/adapters/line_diff"
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
+	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
+	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
+	githubout "github.com/nathantilsley/chart-val/internal/diff/adapters/github_out"
+	helmcli "github.com/nathantilsley/chart-val/internal/diff/adapters/helm_cli"
+	linediff "github.com/nathantilsley/chart-val/internal/diff/adapters/line_diff"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
 var update = flag.Bool("update", false, "update golden files")
@@ -97,118 +97,15 @@ func TestIntegration_FullDiffFlow(t *testing.T) {
 		})
 	}
 
-	// Generate grouped check run markdown (one per chart)
-	checkRunMD := formatCheckRunMarkdown(allResults)
+	// Generate grouped check run markdown (one per chart) - using production code
+	checkRunMD := githubout.FormatCheckRunMarkdown(allResults)
 	goldenFile := filepath.Join(goldenDir, "check-run-my-app.md")
 	compareOrUpdateGolden(t, goldenFile, checkRunMD)
 
-	// Generate PR summary comment
-	prComment := formatPRComment(allResults)
+	// Generate PR summary comment - using production code
+	prComment := githubout.FormatPRComment(allResults)
 	goldenFile = filepath.Join(goldenDir, "pr-comment.md")
 	compareOrUpdateGolden(t, goldenFile, prComment)
-}
-
-// formatCheckRunMarkdown produces the markdown that mirrors what GitHub displays
-// for a Check Run created by chart-sentry — one check run per chart with
-// collapsible environment sections.
-func formatCheckRunMarkdown(results []domain.DiffResult) string {
-	if len(results) == 0 {
-		return ""
-	}
-
-	chartName := results[0].ChartName
-
-	changed := 0
-	unchanged := 0
-	for _, r := range results {
-		if r.Status == domain.StatusChanges {
-			changed++
-		} else {
-			unchanged++
-		}
-	}
-
-	conclusion := "success"
-	if changed > 0 {
-		conclusion = "neutral"
-	}
-
-	var sb strings.Builder
-	fmt.Fprintf(&sb, "# chart-sentry: %s\n\n", chartName)
-	fmt.Fprintf(&sb, "**Status:** completed\n")
-	fmt.Fprintf(&sb, "**Conclusion:** %s\n\n", conclusion)
-	fmt.Fprintf(&sb, "## Helm diff — %s\n\n", chartName)
-	fmt.Fprintf(&sb, "### Summary\n")
-	fmt.Fprintf(&sb, "Analyzed %d environment(s): %d changed, %d unchanged\n\n", len(results), changed, unchanged)
-	fmt.Fprintf(&sb, "### Output\n")
-
-	for i, r := range results {
-		if i > 0 {
-			sb.WriteString("\n")
-		}
-
-		status := "No Changes"
-		if r.Status == domain.StatusChanges {
-			status = "Changed"
-		}
-
-		fmt.Fprintf(&sb, "<details><summary>%s — %s</summary>\n\n", r.Environment, status)
-
-		if r.UnifiedDiff == "" && r.SemanticDiff == "" {
-			sb.WriteString("No changes detected.\n")
-		} else {
-			// Show semantic diff first (if available), then unified diff
-			if r.SemanticDiff != "" {
-				sb.WriteString("**Semantic Diff (dyff):**\n")
-				fmt.Fprintf(&sb, "```diff\n%s\n```\n\n", r.SemanticDiff)
-			}
-			if r.UnifiedDiff != "" {
-				sb.WriteString("**Unified Diff (line-based):**\n")
-				fmt.Fprintf(&sb, "```diff\n%s\n```\n", r.UnifiedDiff)
-			}
-		}
-
-		sb.WriteString("\n</details>\n")
-	}
-
-	return sb.String()
-}
-
-// formatPRComment produces a summary comment aggregating all environment diffs.
-func formatPRComment(results []domain.DiffResult) string {
-	var sb strings.Builder
-	sb.WriteString("## Chart-Sentry Diff Report\n\n")
-
-	// Table header
-	sb.WriteString("| Chart | Environment | Status |\n")
-	sb.WriteString("|-------|-------------|--------|\n")
-	for _, r := range results {
-		status := "No Changes"
-		if r.Status == domain.StatusChanges {
-			status = "Changed"
-		}
-		fmt.Fprintf(&sb, "| %s | %s | %s |\n", r.ChartName, r.Environment, status)
-	}
-	sb.WriteString("\n")
-
-	// Detail sections - prefer semantic diff in PR comments
-	for _, r := range results {
-		fmt.Fprintf(&sb, "### %s/%s\n", r.ChartName, r.Environment)
-		if r.Status != domain.StatusChanges {
-			sb.WriteString("No changes detected.\n\n")
-			continue
-		}
-		sb.WriteString("<details><summary>View diff</summary>\n\n")
-		// Prefer semantic diff, fall back to unified diff
-		diffToShow := r.SemanticDiff
-		if diffToShow == "" {
-			diffToShow = r.UnifiedDiff
-		}
-		fmt.Fprintf(&sb, "```diff\n%s\n```\n", diffToShow)
-		sb.WriteString("</details>\n\n")
-	}
-
-	return sb.String()
 }
 
 // TestIntegration_NewChart tests the scenario where a chart is being added
@@ -303,8 +200,8 @@ func TestIntegration_NewChart(t *testing.T) {
 		})
 	}
 
-	// Generate grouped check run markdown
-	checkRunMD := formatCheckRunMarkdown(allResults)
+	// Generate grouped check run markdown - using production code
+	checkRunMD := githubout.FormatCheckRunMarkdown(allResults)
 	goldenFile := filepath.Join(goldenDir, "check-run-new-chart.md")
 	compareOrUpdateGolden(t, goldenFile, checkRunMD)
 }

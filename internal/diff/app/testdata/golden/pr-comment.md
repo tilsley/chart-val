@@ -1,12 +1,15 @@
-## Chart-Sentry Diff Report
+<!-- chart-val: my-app -->
+## 📊 Helm Diff Report: `my-app`
 
-| Chart | Environment | Status |
-|-------|-------------|--------|
-| my-app | prod | Changed |
-| my-app | staging | Changed |
+✅ **Status:** Analysis complete — 2 environment(s) with changes
 
-### my-app/prod
-<details><summary>View diff</summary>
+| Environment | Status |
+|-------------|--------|
+| `prod` | 📝 Changed |
+| `staging` | 📝 Changed |
+
+<details>
+<summary><b>prod</b> — View diff</summary>
 
 ```diff
 --- my-app/prod (main)
@@ -56,10 +59,11 @@ spec.template.spec.containers.my-app.resources.limits.memory  (apps/v1/Deploymen
     LOG_LEVEL: warn
     CACHE_ENABLED: "true"
 ```
+
 </details>
 
-### my-app/staging
-<details><summary>View diff</summary>
+<details>
+<summary><b>staging</b> — View diff</summary>
 
 ```diff
 --- my-app/staging (main)
@@ -99,5 +103,8 @@ spec.template.spec.containers.my-app.env  (apps/v1/Deployment/my-app)
     LOG_LEVEL: debug
     CACHE_ENABLED: "true"
 ```
+
 </details>
 
+---
+_Posted by [chart-val](https://github.com/nathantilsley/chart-val) — Your charts, validated before they deploy._

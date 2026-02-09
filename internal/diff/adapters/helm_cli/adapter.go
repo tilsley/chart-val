@@ -28,7 +28,7 @@ func New() (*Adapter, error) {
 // Render runs `helm template` on the given chart directory with the
 // specified value files and returns the rendered manifest bytes.
 func (a *Adapter) Render(ctx context.Context, chartDir string, valueFiles []string) ([]byte, error) {
-	args := []string{"template", "chart-sentry-render", chartDir}
+	args := []string{"template", "chart-val-render", chartDir}
 	for _, vf := range valueFiles {
 		args = append(args, "-f", filepath.Join(chartDir, vf))
 	}

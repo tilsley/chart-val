@@ -1,7 +1,7 @@
-# chart-sentry: my-app
+# chart-val: my-app
 
 **Status:** completed
-**Conclusion:** neutral
+**Conclusion:** success
 
 ## Helm diff — my-app
 

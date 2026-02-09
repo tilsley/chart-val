@@ -1,4 +1,6 @@
-# chart-sentry
+# chart-val
+
+_Your charts, validated before they deploy._
 
 A GitHub App that automatically generates Helm chart diffs for pull requests using the GitHub Checks API.
 
@@ -27,7 +29,7 @@ A GitHub App that automatically generates Helm chart diffs for pull requests usi
 
 ```bash
 # Copy your GitHub App private key to the project root
-cp /path/to/your/key.pem chart-sentry.pem
+cp /path/to/your/key.pem chart-val.pem
 ```
 
 **Step 2:** Create a `.env` file with your GitHub App credentials:
@@ -42,11 +44,11 @@ cp .env.example .env
 # WEBHOOK_SECRET=your-webhook-secret
 ```
 
-Both `chart-sentry.pem` and `.env` are gitignored and will NOT be committed.
+Both `chart-val.pem` and `.env` are gitignored and will NOT be committed.
 
 ### 3. Repository Configuration
 
-Add a `.chart-sentry.yaml` file to the root of repositories you want to monitor:
+Add a `.chart-val.yaml` file to the root of repositories you want to monitor:
 
 ```yaml
 charts:
@@ -106,7 +108,7 @@ make lint
 
 ### Manual Testing
 
-You can test chart-sentry locally by simulating GitHub webhook requests:
+You can test chart-val locally by simulating GitHub webhook requests:
 
 #### 1. Ensure you have a `.env` file configured (see Configuration section)
 
@@ -127,7 +129,7 @@ make run
 
 **Terminal 2:**
 ```bash
-./bin/chart-sentry-cli \
+./bin/chart-val-cli \
   -owner myorg \
   -repo myrepo \
   -pr 123 \
@@ -136,7 +138,7 @@ make run
 
 Or with a specific SHA:
 ```bash
-./bin/chart-sentry-cli \
+./bin/chart-val-cli \
   -owner myorg \
   -repo myrepo \
   -pr 123 \
@@ -170,7 +172,7 @@ The server will then process the PR and post Check Runs to GitHub.
 ## How It Works
 
 1. **Webhook Reception**: Receives `pull_request` events from GitHub
-2. **Config Loading**: Reads `.chart-sentry.yaml` from the repository
+2. **Config Loading**: Reads `.chart-val.yaml` from the repository
 3. **Chart Fetching**: Downloads base (main) and head (PR) chart versions via GitHub API
 4. **Rendering**: Runs `helm template` for each environment
 5. **Diff Generation**: Computes unified diffs between rendered manifests

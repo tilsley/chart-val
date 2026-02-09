@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nathantilsley/chart-sentry/internal/platform/config"
-	"github.com/nathantilsley/chart-sentry/internal/platform/logger"
+	"github.com/nathantilsley/chart-val/internal/platform/config"
+	"github.com/nathantilsley/chart-val/internal/platform/logger"
 )
 
 func main() {

@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
 // DiffUseCase is the driving port for triggering a chart diff.

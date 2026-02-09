@@ -7,8 +7,8 @@ import (
 
 	gogithub "github.com/google/go-github/v68/github"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
-	"github.com/nathantilsley/chart-sentry/internal/diff/ports"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/ports"
 )
 
 // WebhookHandler handles incoming GitHub webhook events.

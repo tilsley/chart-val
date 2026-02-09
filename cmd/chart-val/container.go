@@ -6,18 +6,18 @@ import (
 
 	gogithub "github.com/google/go-github/v68/github"
 
-	dyffdiff "github.com/nathantilsley/chart-sentry/internal/diff/adapters/dyff_diff"
-	envdiscovery "github.com/nathantilsley/chart-sentry/internal/diff/adapters/env_discovery"
-	githubin "github.com/nathantilsley/chart-sentry/internal/diff/adapters/github_in"
-	githubout "github.com/nathantilsley/chart-sentry/internal/diff/adapters/github_out"
-	helmcli "github.com/nathantilsley/chart-sentry/internal/diff/adapters/helm_cli"
-	linediff "github.com/nathantilsley/chart-sentry/internal/diff/adapters/line_diff"
-	prfiles "github.com/nathantilsley/chart-sentry/internal/diff/adapters/pr_files"
-	sourcectrl "github.com/nathantilsley/chart-sentry/internal/diff/adapters/source_ctrl"
-	"github.com/nathantilsley/chart-sentry/internal/diff/app"
-	"github.com/nathantilsley/chart-sentry/internal/diff/ports"
-	"github.com/nathantilsley/chart-sentry/internal/platform/config"
-	ghclient "github.com/nathantilsley/chart-sentry/internal/platform/github"
+	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
+	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
+	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
+	githubout "github.com/nathantilsley/chart-val/internal/diff/adapters/github_out"
+	helmcli "github.com/nathantilsley/chart-val/internal/diff/adapters/helm_cli"
+	linediff "github.com/nathantilsley/chart-val/internal/diff/adapters/line_diff"
+	prfiles "github.com/nathantilsley/chart-val/internal/diff/adapters/pr_files"
+	sourcectrl "github.com/nathantilsley/chart-val/internal/diff/adapters/source_ctrl"
+	"github.com/nathantilsley/chart-val/internal/diff/app"
+	"github.com/nathantilsley/chart-val/internal/diff/ports"
+	"github.com/nathantilsley/chart-val/internal/platform/config"
+	ghclient "github.com/nathantilsley/chart-val/internal/platform/github"
 )
 
 // Container holds all application dependencies.

@@ -9,7 +9,7 @@ import (
 
 	gogithub "github.com/google/go-github/v68/github"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
 const maxCheckRunTextLen = 65535
@@ -33,7 +33,7 @@ func (a *Adapter) CreateInProgressCheck(ctx context.Context, pr domain.PRContext
 	client := a.client
 
 	checkRun, _, err := client.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, gogithub.CreateCheckRunOptions{
-		Name:    fmt.Sprintf("chart-sentry: %s", chartName),
+		Name:    fmt.Sprintf("chart-val: %s", chartName),
 		HeadSHA: pr.HeadSHA,
 		Status:  gogithub.Ptr("in_progress"),
 		Output: &gogithub.CheckRunOutput{
@@ -62,7 +62,7 @@ func (a *Adapter) UpdateCheckWithResults(ctx context.Context, pr domain.PRContex
 	conclusion, summary, text := formatChartCheckRun(results)
 
 	_, _, err := client.Checks.UpdateCheckRun(ctx, pr.Owner, pr.Repo, checkRunID, gogithub.UpdateCheckRunOptions{
-		Name:       fmt.Sprintf("chart-sentry: %s", results[0].ChartName),
+		Name:       fmt.Sprintf("chart-val: %s", results[0].ChartName),
 		Status:     gogithub.Ptr("completed"),
 		Conclusion: gogithub.Ptr(conclusion),
 		Output: &gogithub.CheckRunOutput{
@@ -90,7 +90,7 @@ func (a *Adapter) PostComment(ctx context.Context, pr domain.PRContext, results 
 
 	client := a.client
 	chartName := results[0].ChartName
-	commentMarker := fmt.Sprintf("<!-- chart-sentry: %s -->", chartName)
+	commentMarker := fmt.Sprintf("<!-- chart-val: %s -->", chartName)
 
 	// Delete old comments for this chart to avoid bloat
 	logger.Info("checking for existing comments to delete", "chart", chartName)
@@ -110,7 +110,7 @@ func (a *Adapter) PostComment(ctx context.Context, pr domain.PRContext, results 
 	}
 
 	// Format and post new comment
-	commentBody := formatPRComment(results)
+	commentBody := FormatPRComment(results)
 
 	_, _, err = client.Issues.CreateComment(ctx, pr.Owner, pr.Repo, pr.PRNumber, &gogithub.IssueComment{
 		Body: gogithub.Ptr(commentBody),
@@ -121,6 +121,27 @@ func (a *Adapter) PostComment(ctx context.Context, pr domain.PRContext, results 
 
 	logger.Info("PR comment posted successfully", "chart", results[0].ChartName)
 	return nil
+}
+
+// FormatCheckRunMarkdown formats a complete check run markdown document for testing.
+// This includes the metadata header that GitHub displays.
+func FormatCheckRunMarkdown(results []domain.DiffResult) string {
+	if len(results) == 0 {
+		return ""
+	}
+
+	chartName := results[0].ChartName
+	conclusion, summary, text := formatChartCheckRun(results)
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "# chart-val: %s\n\n", chartName)
+	sb.WriteString("**Status:** completed\n")
+	fmt.Fprintf(&sb, "**Conclusion:** %s\n\n", conclusion)
+	fmt.Fprintf(&sb, "## Helm diff — %s\n\n", chartName)
+	fmt.Fprintf(&sb, "### Summary\n%s\n\n", summary)
+	fmt.Fprintf(&sb, "### Output\n%s", text)
+
+	return sb.String()
 }
 
 // formatChartCheckRun builds the conclusion, summary, and collapsible text
@@ -191,8 +212,9 @@ func buildSummary(total, changed, unchanged int) string {
 	return fmt.Sprintf("Analyzed %d environment(s): %d changed, %d unchanged", total, changed, unchanged)
 }
 
-// formatPRComment formats a PR comment body for a chart's diff results.
-func formatPRComment(results []domain.DiffResult) string {
+// FormatPRComment formats a PR comment body for a chart's diff results.
+// Exported for use in integration tests.
+func FormatPRComment(results []domain.DiffResult) string {
 	if len(results) == 0 {
 		return ""
 	}
@@ -201,7 +223,7 @@ func formatPRComment(results []domain.DiffResult) string {
 	var sb strings.Builder
 
 	// Hidden marker for identifying this comment (for deletion on updates)
-	fmt.Fprintf(&sb, "<!-- chart-sentry: %s -->\n", chartName)
+	fmt.Fprintf(&sb, "<!-- chart-val: %s -->\n", chartName)
 
 	// Header
 	fmt.Fprintf(&sb, "## 📊 Helm Diff Report: `%s`\n\n", chartName)
@@ -253,7 +275,7 @@ func formatPRComment(results []domain.DiffResult) string {
 	}
 
 	sb.WriteString("---\n")
-	sb.WriteString("_Posted by [chart-sentry](https://github.com/nathantilsley/chart-sentry)_\n")
+	sb.WriteString("_Posted by [chart-val](https://github.com/nathantilsley/chart-val) — Your charts, validated before they deploy._\n")
 
 	return sb.String()
 }

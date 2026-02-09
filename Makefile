@@ -1,10 +1,10 @@
 .PHONY: help build build-cli run test test-verbose test-integration test-integration-update test-e2e test-e2e-local clean fmt vet lint lint-go lint-arch coverage
 
 # Variables
-BINARY_NAME=chart-sentry
-CLI_BINARY_NAME=chart-sentry-cli
-MAIN_PATH=./cmd/chart-sentry
-CLI_MAIN_PATH=./cmd/chart-sentry-cli
+BINARY_NAME=chart-val
+CLI_BINARY_NAME=chart-val-cli
+MAIN_PATH=./cmd/chart-val
+CLI_MAIN_PATH=./cmd/chart-val-cli
 BUILD_DIR=./bin
 
 # GitHub App Configuration (MUST be set in .env for real deployments)
@@ -20,11 +20,11 @@ ifneq (,$(wildcard ./.env))
 endif
 
 help:
-	@echo "chart-sentry - Makefile targets:"
+	@echo "chart-val - Makefile targets:"
 	@echo ""
 	@echo "Build & Run:"
-	@echo "  make build              - Build the server binary to ./bin/chart-sentry"
-	@echo "  make build-cli          - Build the CLI tool to ./bin/chart-sentry-cli"
+	@echo "  make build              - Build the server binary to ./bin/chart-val"
+	@echo "  make build-cli          - Build the CLI tool to ./bin/chart-val-cli"
 	@echo "  make run                - Build and run the server locally (requires config)"
 	@echo ""
 	@echo "Testing:"
@@ -48,13 +48,13 @@ help:
 	@echo ""
 	@echo "Manual Testing:"
 	@echo "  1. Create .env file with your GitHub App credentials (see .env.example)"
-	@echo "  2. Place GitHub App private key at: ./chart-sentry.pem"
+	@echo "  2. Place GitHub App private key at: ./chart-val.pem"
 	@echo "  3. Terminal 1: make run"
-	@echo "  4. Terminal 2: make build-cli && ./bin/chart-sentry-cli https://github.com/owner/repo/pull/123"
+	@echo "  4. Terminal 2: make build-cli && ./bin/chart-val-cli https://github.com/owner/repo/pull/123"
 	@echo ""
 	@echo "E2E Testing (creates real PRs):"
 	@echo "  1. Configure .env with your GitHub App credentials"
-	@echo "  2. Place GitHub App private key at: ./chart-sentry.pem"
+	@echo "  2. Place GitHub App private key at: ./chart-val.pem"
 	@echo "  3. export GITHUB_TOKEN=ghp_your_token_here"
 	@echo "  4. make test-e2e-local"
 
@@ -72,7 +72,7 @@ build-cli:
 	@echo "  $(BUILD_DIR)/$(CLI_BINARY_NAME) https://github.com/owner/repo/pull/123"
 
 run: build
-	@echo "Starting chart-sentry..."
+	@echo "Starting chart-val..."
 	@if [ -z "$$GITHUB_APP_ID" ]; then \
 		echo "Error: GITHUB_APP_ID not set. Create a .env file or export it."; \
 		exit 1; \
@@ -81,10 +81,10 @@ run: build
 		echo "Error: WEBHOOK_SECRET not set."; \
 		exit 1; \
 	fi
-	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ ! -f chart-sentry.pem ]; then \
-		echo "Error: GITHUB_PRIVATE_KEY not set and chart-sentry.pem not found."; \
+	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ ! -f chart-val.pem ]; then \
+		echo "Error: GITHUB_PRIVATE_KEY not set and chart-val.pem not found."; \
 		echo ""; \
-		echo "Place your GitHub App private key at: ./chart-sentry.pem"; \
+		echo "Place your GitHub App private key at: ./chart-val.pem"; \
 		echo "Or add to .env: GITHUB_PRIVATE_KEY=\"\$$(cat /path/to/your/key.pem)\""; \
 		exit 1; \
 	fi
@@ -94,8 +94,8 @@ run: build
 	@echo "  Webhook Secret: $$WEBHOOK_SECRET"
 	@echo "  Port: $${PORT:-8080}"
 	@echo ""
-	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ -f chart-sentry.pem ]; then \
-		export GITHUB_PRIVATE_KEY="$$(cat chart-sentry.pem)" && $(BUILD_DIR)/$(BINARY_NAME); \
+	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ -f chart-val.pem ]; then \
+		export GITHUB_PRIVATE_KEY="$$(cat chart-val.pem)" && $(BUILD_DIR)/$(BINARY_NAME); \
 	else \
 		$(BUILD_DIR)/$(BINARY_NAME); \
 	fi
@@ -137,10 +137,10 @@ test-e2e-local:
 		echo "  export GITHUB_TOKEN=ghp_your_token_here"; \
 		exit 1; \
 	fi
-	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ ! -f chart-sentry.pem ]; then \
-		echo "Error: GITHUB_PRIVATE_KEY not set and chart-sentry.pem not found."; \
+	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ ! -f chart-val.pem ]; then \
+		echo "Error: GITHUB_PRIVATE_KEY not set and chart-val.pem not found."; \
 		echo ""; \
-		echo "Place your GitHub App private key at: ./chart-sentry.pem"; \
+		echo "Place your GitHub App private key at: ./chart-val.pem"; \
 		echo "Or add to .env: GITHUB_PRIVATE_KEY=\"\$$(cat /path/to/your/key.pem)\""; \
 		exit 1; \
 	fi
@@ -149,8 +149,8 @@ test-e2e-local:
 	@echo "  Installation ID: $$GITHUB_INSTALLATION_ID"
 	@echo "  Webhook Secret: $$WEBHOOK_SECRET"
 	@echo ""
-	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ -f chart-sentry.pem ]; then \
-		export GITHUB_PRIVATE_KEY="$$(cat chart-sentry.pem)" && E2E_TEST=true go test ./test/e2e -v -timeout 5m; \
+	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ -f chart-val.pem ]; then \
+		export GITHUB_PRIVATE_KEY="$$(cat chart-val.pem)" && E2E_TEST=true go test ./test/e2e -v -timeout 5m; \
 	else \
 		E2E_TEST=true go test ./test/e2e -v -timeout 5m; \
 	fi

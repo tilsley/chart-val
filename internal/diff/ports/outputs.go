@@ -3,7 +3,7 @@ package ports
 import (
 	"context"
 
-	"github.com/nathantilsley/chart-sentry/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
 // SourceControlPort abstracts fetching chart files from a repository at a given ref.

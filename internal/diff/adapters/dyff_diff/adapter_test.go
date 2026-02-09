@@ -93,7 +93,7 @@ data:
 	}
 
 	// Verify temp paths were removed
-	if strings.Contains(diff, "/tmp/") || strings.Contains(diff, "chart-sentry-dyff") {
+	if strings.Contains(diff, "/tmp/") || strings.Contains(diff, "chart-val-dyff") {
 		t.Error("Expected temp file paths to be removed from diff output")
 	}
 }
@@ -136,14 +136,14 @@ data.key  (v1/ConfigMap/test)
 		},
 		{
 			name: "removes temp file paths",
-			output: `between /var/folders/xyz/chart-sentry-dyff-12345/base.yaml
-and /var/folders/xyz/chart-sentry-dyff-12345/head.yaml
+			output: `between /var/folders/xyz/chart-val-dyff-12345/base.yaml
+and /var/folders/xyz/chart-val-dyff-12345/head.yaml
 
 spec.replicas  (apps/v1/Deployment/my-app)
   ± value change
     - 3
     + 5`,
-			tmpDir: "/var/folders/xyz/chart-sentry-dyff-12345",
+			tmpDir: "/var/folders/xyz/chart-val-dyff-12345",
 			want: []string{
 				"spec.replicas",
 				"± value change",
@@ -151,7 +151,7 @@ spec.replicas  (apps/v1/Deployment/my-app)
 				"+ 5",
 			},
 			unwant: []string{
-				"chart-sentry-dyff-12345",
+				"chart-val-dyff-12345",
 				"/var/folders",
 			},
 		},

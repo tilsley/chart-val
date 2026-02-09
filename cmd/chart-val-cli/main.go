@@ -72,9 +72,9 @@ func run() error {
 
 	args := flag.Args()
 	if len(args) == 0 {
-		fmt.Fprintf(os.Stderr, "Usage: chart-sentry-cli <pr-url> [flags]\n")
+		fmt.Fprintf(os.Stderr, "Usage: chart-val-cli <pr-url> [flags]\n")
 		fmt.Fprintf(os.Stderr, "\nExample:\n")
-		fmt.Fprintf(os.Stderr, "  GITHUB_TOKEN=ghp_xxx chart-sentry-cli https://github.com/owner/repo/pull/123\n")
+		fmt.Fprintf(os.Stderr, "  GITHUB_TOKEN=ghp_xxx chart-val-cli https://github.com/owner/repo/pull/123\n")
 		fmt.Fprintf(os.Stderr, "\nFlags:\n")
 		flag.PrintDefaults()
 		return fmt.Errorf("missing PR URL")

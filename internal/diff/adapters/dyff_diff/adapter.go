@@ -27,7 +27,7 @@ func (a *Adapter) ComputeDiff(baseName, headName string, base, head []byte) stri
 	}
 
 	// Create temp dir for manifest files
-	tmpDir, err := os.MkdirTemp("", "chart-sentry-dyff-*")
+	tmpDir, err := os.MkdirTemp("", "chart-val-dyff-*")
 	if err != nil {
 		return ""
 	}

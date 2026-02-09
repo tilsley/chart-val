@@ -5,7 +5,7 @@ Run end-to-end tests with real GitHub PRs in under 2 minutes!
 ## Quick Run
 
 ```bash
-# 1. Place GitHub App private key at ./chart-sentry.pem (if not already)
+# 1. Place GitHub App private key at ./chart-val.pem (if not already)
 # 2. Set your GitHub token
 export GITHUB_TOKEN="ghp_your_token_here"
 
@@ -15,7 +15,7 @@ make test-e2e-local
 
 **That's it!** The Makefile automatically loads:
 - `GITHUB_APP_ID` from .env (required - set your real value)
-- `GITHUB_PRIVATE_KEY` from chart-sentry.pem or .env
+- `GITHUB_PRIVATE_KEY` from chart-val.pem or .env
 - `GITHUB_INSTALLATION_ID` from .env (required - set your real value)
 - `WEBHOOK_SECRET` from .env (required - set your real value)
 
@@ -27,7 +27,7 @@ Only `GITHUB_TOKEN` needs to be exported manually.
 ┌─────────────────────────────────────────────────┐
 │  E2E Test Workflow                              │
 ├─────────────────────────────────────────────────┤
-│  1. Starts chart-sentry test server            │
+│  1. Starts chart-val test server            │
 │     (httptest.Server - standard Go pattern)     │
 │  2. Creates test branch: e2e-test-1738962000   │
 │  3. Adds test chart files                       │
@@ -48,17 +48,17 @@ Only `GITHUB_TOKEN` needs to be exported manually.
 
 ```
 === RUN   TestE2E_FullWorkflow
-    e2e_test.go:29: Running E2E test against tilsley/chart-sentry
+    e2e_test.go:29: Running E2E test against tilsley/chart-val
     e2e_test.go:33: Creating test branch: e2e-test-1738962000
     e2e_test.go:41: Adding test chart changes to branch
     e2e_test.go:46: Creating draft PR
     e2e_test.go:51: Created PR #123
     e2e_test.go:54: Waiting for check runs to complete...
     e2e_test.go:62: Verifying check runs...
-    e2e_test.go:69: Found check run: chart-sentry: e2e-test-chart (status: completed, conclusion: success)
+    e2e_test.go:69: Found check run: chart-val: e2e-test-chart (status: completed, conclusion: success)
     e2e_test.go:85: Check run summary: Analyzed 1 environment(s): 0 changed, 1 unchanged
     e2e_test.go:90: Verifying PR comments...
-    e2e_test.go:100: Found chart-sentry comment (length: 542 chars)
+    e2e_test.go:100: Found chart-val comment (length: 542 chars)
     e2e_test.go:114: ✅ E2E test completed successfully
 --- PASS: TestE2E_FullWorkflow (45.23s)
 PASS
@@ -81,7 +81,7 @@ export GITHUB_TOKEN="ghp_..."
 ### "GITHUB_APP_ID environment variable required"
 ```bash
 export GITHUB_APP_ID="your_app_id"
-export GITHUB_PRIVATE_KEY="$(cat chart-sentry.pem)"
+export GITHUB_PRIVATE_KEY="$(cat chart-val.pem)"
 ```
 
 ### "timeout waiting for check runs"

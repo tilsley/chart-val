@@ -1,7 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git -C /Users/nathantilsley/repos/chart-sentry log --oneline --all)",
+      "Bash(git -C /Users/nathantilsley/repos/chart-val log --oneline --all)",
       "Bash(go version:*)",
       "Bash(helm version:*)",
       "WebSearch",
@@ -10,10 +10,10 @@
       "Bash(go vet:*)",
       "Bash(go test:*)",
       "Bash(make:*)",
-      "Bash(./bin/chart-sentry-cli:*)",
+      "Bash(./bin/chart-val-cli:*)",
       "Bash(echo:*)",
       "Bash(git add:*)",
-      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd integration test, CLI tool, and Makefile for chart-sentry\n\n## Features Added\n\n### 1. Integration Test Suite\n- `internal/diff/app/integration_test.go` with `TestIntegration_FullDiffFlow`\n- Real Helm chart fixtures in `testdata/{base,head}/my-app/`\n- Golden file support for reproducible test output\n- `-update` flag to regenerate golden files\n- Tests check Run markdown and PR comment generation\n\n### 2. CLI Tool for Manual Testing\n- `cmd/chart-sentry-cli/` - webhook simulator\n- Simple interface: just pass a PR URL\n- Automatically fetches PR details from GitHub API\n- Parses PR URL: `https://github.com/owner/repo/pull/123`\n- Signs webhook with HMAC SHA256\n- POSTs to local webhook endpoint\n\n### 3. Makefile\n- `make build` - compile server to ./bin/chart-sentry\n- `make build-cli` - compile CLI tool to ./bin/chart-sentry-cli\n- `make run` - run server locally with auto-loaded config\n- `make test` - run all tests\n- `make test-integration` - run integration tests\n- `make test-integration-update` - regenerate golden files\n- `make fmt`, `make vet`, `make lint` - code quality\n\n### 4. Configuration\n- `Makefile` includes all defaults: GITHUB_APP_ID, INSTALLATION_ID, WEBHOOK_SECRET\n- Loads GITHUB_PRIVATE_KEY from `chart-sentry.pem` at runtime\n- `.env.example` for optional overrides\n- `.gitignore` to protect secrets\n\n### 5. Documentation\n- Updated README with setup, testing, and architecture sections\n- Simplified configuration - just place chart-sentry.pem and run\n\n## Test Fixtures\n- Base chart v0.1.0 with staging/prod environments\n- Head chart v0.2.0 with config changes\n- Golden files showing expected Check Run and PR comment output\n\n## Quick Start\n```bash\ncp /path/to/key.pem chart-sentry.pem\nmake run                 # Terminal 1\nmake build-cli && ./bin/chart-sentry-cli https://github.com/owner/repo/pull/123  # Terminal 2\n```\n\nCo-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd integration test, CLI tool, and Makefile for chart-val\n\n## Features Added\n\n### 1. Integration Test Suite\n- `internal/diff/app/integration_test.go` with `TestIntegration_FullDiffFlow`\n- Real Helm chart fixtures in `testdata/{base,head}/my-app/`\n- Golden file support for reproducible test output\n- `-update` flag to regenerate golden files\n- Tests check Run markdown and PR comment generation\n\n### 2. CLI Tool for Manual Testing\n- `cmd/chart-val-cli/` - webhook simulator\n- Simple interface: just pass a PR URL\n- Automatically fetches PR details from GitHub API\n- Parses PR URL: `https://github.com/owner/repo/pull/123`\n- Signs webhook with HMAC SHA256\n- POSTs to local webhook endpoint\n\n### 3. Makefile\n- `make build` - compile server to ./bin/chart-val\n- `make build-cli` - compile CLI tool to ./bin/chart-val-cli\n- `make run` - run server locally with auto-loaded config\n- `make test` - run all tests\n- `make test-integration` - run integration tests\n- `make test-integration-update` - regenerate golden files\n- `make fmt`, `make vet`, `make lint` - code quality\n\n### 4. Configuration\n- `Makefile` includes all defaults: GITHUB_APP_ID, INSTALLATION_ID, WEBHOOK_SECRET\n- Loads GITHUB_PRIVATE_KEY from `chart-val.pem` at runtime\n- `.env.example` for optional overrides\n- `.gitignore` to protect secrets\n\n### 5. Documentation\n- Updated README with setup, testing, and architecture sections\n- Simplified configuration - just place chart-val.pem and run\n\n## Test Fixtures\n- Base chart v0.1.0 with staging/prod environments\n- Head chart v0.2.0 with config changes\n- Golden files showing expected Check Run and PR comment output\n\n## Quick Start\n```bash\ncp /path/to/key.pem chart-val.pem\nmake run                 # Terminal 1\nmake build-cli && ./bin/chart-val-cli https://github.com/owner/repo/pull/123  # Terminal 2\n```\n\nCo-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git push:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd chart change detection to skip processing non-chart PRs\n\n## Changes\n- Add FileChangesPort to check which files changed in PR\n- Implement PR Files adapter using GitHub API''s ListFiles\n- Update DiffService to check for charts/ directory changes first\n- Skip processing if no chart changes are detected\n- Wire up adapter in main.go\n\n## Behavior\n- Service now queries PR file changes from GitHub API\n- Only processes if files in charts/ directory were modified\n- Returns early with info log if no chart changes\n- Prevents unnecessary Helm rendering and API calls\n\nCo-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(xargs:*)",
@@ -28,9 +28,10 @@
       "Bash(curl:*)",
       "Bash(git remote set-url:*)",
       "Bash(git reset:*)",
-      "Bash(WEBHOOK_SECRET=test ./bin/chart-sentry-cli:*)",
-      "Bash(WEBHOOK_SECRET=test GITHUB_PRIVATE_KEY=\"test\" GITHUB_APP_ID=1 ./bin/chart-sentry-cli:*)",
-      "Bash(dyff --help:*)"
+      "Bash(WEBHOOK_SECRET=test ./bin/chart-val-cli:*)",
+      "Bash(WEBHOOK_SECRET=test GITHUB_PRIVATE_KEY=\"test\" GITHUB_APP_ID=1 ./bin/chart-val-cli:*)",
+      "Bash(dyff --help:*)",
+      "Bash(find:*)"
     ]
   }
 }

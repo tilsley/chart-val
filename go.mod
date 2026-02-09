@@ -1,4 +1,4 @@
-module github.com/nathantilsley/chart-sentry
+module github.com/nathantilsley/chart-val
 
 go 1.24.0
 

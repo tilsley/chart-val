@@ -7,8 +7,8 @@ bin/
 *.dylib
 
 # Build artifacts
-/chart-sentry
-/chart-sentry-cli
+/chart-val
+/chart-val-cli
 
 # Test binary
 *.test
@@ -23,7 +23,7 @@ bin/
 
 # GitHub App private key (contains secrets)
 *.pem
-chart-sentry.pem
+chart-val.pem
 
 # IDE
 .vscode/
