@@ -1,108 +1,40 @@
 version: 1
 
-# Hexagonal Architecture (Ports & Adapters) enforcement
-# Ensures domain/app layer doesn't depend on adapters/infrastructure
+# Hexagonal Architecture - Dependency Flow: domain <- ports <- app <- adapters
 
-layers:
-  # Domain layer - pure business logic, no external dependencies
-  - name: domain
-    paths:
-      - internal/diff/domain/**
-    deps:
-      - $std # Can depend on standard library only
+components:
+  - name: diff-domain
+    in: internal/diff/domain
 
-  # Ports layer - interfaces defining boundaries
-  - name: ports
-    paths:
-      - internal/diff/ports/**
-    deps:
-      - $std
-      - domain
+  - name: diff-ports
+    in: internal/diff/ports
+    mayDependOn: [diff-domain]
 
-  # Application layer - use cases and orchestration
-  - name: app
-    paths:
-      - internal/diff/app/**
-    deps:
-      - $std
-      - domain
-      - ports
-      - internal/platform/logger # Logger is infrastructure but used everywhere
+  - name: diff-app
+    in: internal/diff/app
+    mayDependOn: [diff-domain, diff-ports]
 
-  # Adapters layer - implementations of ports (input/output)
-  - name: adapters
-    paths:
-      - internal/diff/adapters/**
-    deps:
-      - $std
-      - domain
-      - ports
-      - internal/platform/** # Can depend on platform utilities
-      - github.com/** # External dependencies allowed in adapters
+  - name: diff-adapters
+    in: internal/diff/adapters
+    mayDependOn: [diff-domain, diff-ports, platform]
 
-  # Platform layer - shared infrastructure (logger, config, clients)
   - name: platform
-    paths:
-      - internal/platform/**
-    deps:
-      - $std
-      - github.com/** # External dependencies allowed
+    in: internal/platform
 
-  # Entry points (cmd) - can depend on everything
-  - name: cmd
-    paths:
-      - cmd/**
-    deps:
-      - $std
-      - domain
-      - ports
-      - app
-      - adapters
-      - internal/platform/**
-      - github.com/**
-
-# Additional rules
 rules:
-  # Domain must not import adapters
-  - from: domain
-    to: adapters
-    allow: false
-    reason: "Domain must not depend on adapters (Dependency Inversion Principle)"
+  - from: diff-domain
+    shouldNot: [{dependOn: [diff-ports, diff-app, diff-adapters, platform]}]
 
-  # Domain must not import platform
-  - from: domain
-    to: internal/platform
-    allow: false
-    reason: "Domain must be pure business logic with no infrastructure dependencies"
+  - from: diff-ports
+    shouldNot: [{dependOn: [diff-app, diff-adapters, platform]}]
 
-  # Ports must not import adapters
-  - from: ports
-    to: adapters
-    allow: false
-    reason: "Ports define interfaces, adapters implement them (not vice versa)"
+  - from: diff-app
+    shouldNot: [{dependOn: [diff-adapters, platform]}]
 
-  # Ports must not import platform (except logger might be ok)
-  - from: ports
-    to: internal/platform
-    allow: false
-    reason: "Ports should define contracts without infrastructure dependencies"
+  - from: diff-adapters
+    shouldNot: [{dependOn: [diff-app, diff-adapters]}]
 
-  # App must not import adapters directly
-  - from: app
-    to: adapters
-    allow: false
-    reason: "App layer depends on ports, not concrete adapters (Dependency Inversion)"
-
-  # Adapters should not depend on each other
-  - from: internal/diff/adapters/**
-    to: internal/diff/adapters/**
-    allow: false
-    reason: "Adapters should be independent and only coupled through ports"
-    exceptions:
-      # Allow adapters to import from the same package (files in same adapter)
-      - internal/diff/adapters/github_in/**.go -> internal/diff/adapters/github_in/**.go
-      - internal/diff/adapters/github_out/**.go -> internal/diff/adapters/github_out/**.go
-      - internal/diff/adapters/source_ctrl/**.go -> internal/diff/adapters/source_ctrl/**.go
-      - internal/diff/adapters/helm_cli/**.go -> internal/diff/adapters/helm_cli/**.go
-      - internal/diff/adapters/pr_files/**.go -> internal/diff/adapters/pr_files/**.go
-      - internal/diff/adapters/env_discovery/**.go -> internal/diff/adapters/env_discovery/**.go
+exclude:
+  - testdata
+  - vendor
+  - "**/*_test.go"

@@ -123,45 +123,6 @@ func (a *Adapter) PostComment(ctx context.Context, pr domain.PRContext, results 
 	return nil
 }
 
-// PostResult creates one GitHub Check Run per chart with collapsible
-// environment sections containing the diff output.
-// Deprecated: Use CreateInProgressCheck + UpdateCheckWithResults for better UX.
-func (a *Adapter) PostResult(ctx context.Context, pr domain.PRContext, results []domain.DiffResult) error {
-	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
-	logger.Info("PostResult called", "numResults", len(results), "owner", pr.Owner, "repo", pr.Repo, "pr", pr.PRNumber)
-
-	client := a.client
-	groups := domain.GroupByChart(results)
-	logger.Info("grouped results by chart", "numGroups", len(groups))
-
-	for i, group := range groups {
-		logger.Info("processing chart group", "index", i, "chartName", group[0].ChartName, "numEnvs", len(group))
-		conclusion, summary, text := formatChartCheckRun(group)
-		logger.Info("formatted check run", "chartName", group[0].ChartName, "conclusion", conclusion, "textLen", len(text))
-
-		logger.Info("creating check run", "chartName", group[0].ChartName)
-		_, _, err := client.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, gogithub.CreateCheckRunOptions{
-			Name:       fmt.Sprintf("chart-sentry: %s", group[0].ChartName),
-			HeadSHA:    pr.HeadSHA,
-			Status:     gogithub.Ptr("completed"),
-			Conclusion: gogithub.Ptr(conclusion),
-			Output: &gogithub.CheckRunOutput{
-				Title:   gogithub.Ptr(fmt.Sprintf("Helm diff — %s", group[0].ChartName)),
-				Summary: gogithub.Ptr(summary),
-				Text:    gogithub.Ptr(text),
-			},
-		})
-		if err != nil {
-			logger.Error("failed to create check run", "chartName", group[0].ChartName, "error", err)
-			return fmt.Errorf("creating check run for %s: %w", group[0].ChartName, err)
-		}
-		logger.Info("check run created successfully", "chartName", group[0].ChartName)
-	}
-
-	logger.Info("all check runs posted successfully")
-	return nil
-}
-
 // formatChartCheckRun builds the conclusion, summary, and collapsible text
 // for a single chart's Check Run.
 func formatChartCheckRun(group []domain.DiffResult) (conclusion, summary, text string) {

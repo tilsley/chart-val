@@ -1,0 +1,4 @@
+environment: dev
+replicaCount: 2
+image:
+  tag: dev-v2

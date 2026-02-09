@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -783,6 +784,10 @@ func TestE2E_UpdateExistingChart(t *testing.T) {
 
 // Helper functions
 
+func readFixture(path string) ([]byte, error) {
+	return os.ReadFile(filepath.Join("fixtures", path))
+}
+
 func getEnvOrDefault(key, defaultValue string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
@@ -927,23 +932,20 @@ func createTestBranch(ctx context.Context, client *github.Client, owner, repo, b
 }
 
 func addTestChartChanges(ctx context.Context, client *github.Client, owner, repo, branch string) error {
-	// Create a simple test chart change
-	chartPath := "charts/e2e-test-chart/Chart.yaml"
-	content := `apiVersion: v2
-name: e2e-test-chart
-description: E2E test chart
-version: 1.0.0
-type: application
-`
+	// Read Chart.yaml from fixture
+	chartContent, err := readFixture("test-chart/Chart.yaml")
+	if err != nil {
+		return fmt.Errorf("reading chart fixture: %w", err)
+	}
 
-	// Create or update the file
+	chartPath := "charts/e2e-test-chart/Chart.yaml"
 	opts := &github.RepositoryContentFileOptions{
 		Message: github.Ptr("Add E2E test chart"),
-		Content: []byte(content),
+		Content: chartContent,
 		Branch:  github.Ptr(branch),
 	}
 
-	_, _, err := client.Repositories.CreateFile(ctx, owner, repo, chartPath, opts)
+	_, _, err = client.Repositories.CreateFile(ctx, owner, repo, chartPath, opts)
 	if err != nil {
 		// If file exists, try updating it
 		existingFile, _, _, _ := client.Repositories.GetContents(ctx, owner, repo, chartPath, &github.RepositoryContentGetOptions{
@@ -956,33 +958,19 @@ type: application
 	}
 
 	if err != nil {
-		return fmt.Errorf("creating/updating test file: %w", err)
+		return fmt.Errorf("creating/updating chart file: %w", err)
 	}
 
-	// Add a template file
-	templatePath := "charts/e2e-test-chart/templates/deployment.yaml"
-	templateContent := `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: e2e-test
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: e2e-test
-  template:
-    metadata:
-      labels:
-        app: e2e-test
-    spec:
-      containers:
-      - name: test
-        image: nginx:latest
-`
+	// Read deployment template from fixture
+	templateContent, err := readFixture("test-chart/templates/deployment.yaml")
+	if err != nil {
+		return fmt.Errorf("reading template fixture: %w", err)
+	}
 
+	templatePath := "charts/e2e-test-chart/templates/deployment.yaml"
 	opts = &github.RepositoryContentFileOptions{
 		Message: github.Ptr("Add E2E test template"),
-		Content: []byte(templateContent),
+		Content: templateContent,
 		Branch:  github.Ptr(branch),
 	}
 
@@ -1109,43 +1097,34 @@ func cleanupOrphanedBranches(ctx context.Context, client *github.Client, owner, 
 }
 
 func addInvalidChart(ctx context.Context, client *github.Client, owner, repo, branch string) error {
-	// Create Chart.yaml
-	chartPath := "charts/invalid-chart/Chart.yaml"
-	chartContent := `apiVersion: v2
-name: invalid-chart
-description: Invalid chart for testing
-version: 1.0.0
-type: application
-`
+	// Read Chart.yaml from fixture
+	chartContent, err := readFixture("invalid-chart/Chart.yaml")
+	if err != nil {
+		return fmt.Errorf("reading chart fixture: %w", err)
+	}
 
+	chartPath := "charts/invalid-chart/Chart.yaml"
 	opts := &github.RepositoryContentFileOptions{
 		Message: github.Ptr("Add invalid chart"),
-		Content: []byte(chartContent),
+		Content: chartContent,
 		Branch:  github.Ptr(branch),
 	}
 
-	_, _, err := client.Repositories.CreateFile(ctx, owner, repo, chartPath, opts)
+	_, _, err = client.Repositories.CreateFile(ctx, owner, repo, chartPath, opts)
 	if err != nil {
 		return fmt.Errorf("creating chart: %w", err)
 	}
 
-	// Create invalid template (invalid YAML syntax)
-	templatePath := "charts/invalid-chart/templates/deployment.yaml"
-	templateContent := `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ .Values.name }}
-spec:
-  replicas: {{ .Values.replicas
-  # Missing closing brace above - invalid YAML
-  selector:
-    matchLabels:
-      app: test
-`
+	// Read invalid template from fixture
+	templateContent, err := readFixture("invalid-chart/templates/deployment.yaml")
+	if err != nil {
+		return fmt.Errorf("reading template fixture: %w", err)
+	}
 
+	templatePath := "charts/invalid-chart/templates/deployment.yaml"
 	opts = &github.RepositoryContentFileOptions{
 		Message: github.Ptr("Add invalid template"),
-		Content: []byte(templateContent),
+		Content: templateContent,
 		Branch:  github.Ptr(branch),
 	}
 
@@ -1182,133 +1161,31 @@ func addNonChartChanges(ctx context.Context, client *github.Client, owner, repo,
 func addChartWithEnvironments(ctx context.Context, client *github.Client, owner, repo, branch string) error {
 	chartName := "multi-env-app"
 
-	// Create Chart.yaml
-	chartPath := fmt.Sprintf("charts/%s/Chart.yaml", chartName)
-	chartContent := `apiVersion: v2
-name: multi-env-app
-description: Multi-environment test chart
-version: 1.0.0
-type: application
-`
-
-	opts := &github.RepositoryContentFileOptions{
-		Message: github.Ptr("Add multi-env chart"),
-		Content: []byte(chartContent),
-		Branch:  github.Ptr(branch),
+	// Define all files to create from fixtures
+	files := map[string]string{
+		fmt.Sprintf("charts/%s/Chart.yaml", chartName):                "multi-env-app/Chart.yaml",
+		fmt.Sprintf("charts/%s/values.yaml", chartName):               "multi-env-app/values.yaml",
+		fmt.Sprintf("charts/%s/templates/deployment.yaml", chartName): "multi-env-app/templates/deployment.yaml",
+		fmt.Sprintf("charts/%s/env/dev-values.yaml", chartName):       "multi-env-app/env/dev-values.yaml",
+		fmt.Sprintf("charts/%s/env/staging-values.yaml", chartName):   "multi-env-app/env/staging-values.yaml",
+		fmt.Sprintf("charts/%s/env/prod-values.yaml", chartName):      "multi-env-app/env/prod-values.yaml",
 	}
 
-	if _, _, err := client.Repositories.CreateFile(ctx, owner, repo, chartPath, opts); err != nil {
-		return fmt.Errorf("creating chart: %w", err)
-	}
+	for repoPath, fixturePath := range files {
+		content, err := readFixture(fixturePath)
+		if err != nil {
+			return fmt.Errorf("reading fixture %s: %w", fixturePath, err)
+		}
 
-	// Create base values.yaml
-	valuesPath := fmt.Sprintf("charts/%s/values.yaml", chartName)
-	valuesContent := `replicaCount: 1
-image:
-  repository: nginx
-  tag: latest
-service:
-  port: 80
-`
+		opts := &github.RepositoryContentFileOptions{
+			Message: github.Ptr(fmt.Sprintf("Add %s", filepath.Base(repoPath))),
+			Content: content,
+			Branch:  github.Ptr(branch),
+		}
 
-	opts = &github.RepositoryContentFileOptions{
-		Message: github.Ptr("Add base values"),
-		Content: []byte(valuesContent),
-		Branch:  github.Ptr(branch),
-	}
-
-	if _, _, err := client.Repositories.CreateFile(ctx, owner, repo, valuesPath, opts); err != nil {
-		return fmt.Errorf("creating values: %w", err)
-	}
-
-	// Create template
-	templatePath := fmt.Sprintf("charts/%s/templates/deployment.yaml", chartName)
-	templateContent := `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: {{ .Chart.Name }}
-  labels:
-    app: {{ .Chart.Name }}
-    environment: {{ .Values.environment }}
-spec:
-  replicas: {{ .Values.replicaCount }}
-  selector:
-    matchLabels:
-      app: {{ .Chart.Name }}
-  template:
-    metadata:
-      labels:
-        app: {{ .Chart.Name }}
-    spec:
-      containers:
-      - name: {{ .Chart.Name }}
-        image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-        ports:
-        - containerPort: {{ .Values.service.port }}
-`
-
-	opts = &github.RepositoryContentFileOptions{
-		Message: github.Ptr("Add deployment template"),
-		Content: []byte(templateContent),
-		Branch:  github.Ptr(branch),
-	}
-
-	if _, _, err := client.Repositories.CreateFile(ctx, owner, repo, templatePath, opts); err != nil {
-		return fmt.Errorf("creating template: %w", err)
-	}
-
-	// Create dev environment values
-	devValuesPath := fmt.Sprintf("charts/%s/env/dev-values.yaml", chartName)
-	devValuesContent := `environment: dev
-replicaCount: 1
-image:
-  tag: dev
-`
-
-	opts = &github.RepositoryContentFileOptions{
-		Message: github.Ptr("Add dev environment values"),
-		Content: []byte(devValuesContent),
-		Branch:  github.Ptr(branch),
-	}
-
-	if _, _, err := client.Repositories.CreateFile(ctx, owner, repo, devValuesPath, opts); err != nil {
-		return fmt.Errorf("creating dev values: %w", err)
-	}
-
-	// Create staging environment values
-	stagingValuesPath := fmt.Sprintf("charts/%s/env/staging-values.yaml", chartName)
-	stagingValuesContent := `environment: staging
-replicaCount: 2
-image:
-  tag: staging
-`
-
-	opts = &github.RepositoryContentFileOptions{
-		Message: github.Ptr("Add staging environment values"),
-		Content: []byte(stagingValuesContent),
-		Branch:  github.Ptr(branch),
-	}
-
-	if _, _, err := client.Repositories.CreateFile(ctx, owner, repo, stagingValuesPath, opts); err != nil {
-		return fmt.Errorf("creating staging values: %w", err)
-	}
-
-	// Create prod environment values
-	prodValuesPath := fmt.Sprintf("charts/%s/env/prod-values.yaml", chartName)
-	prodValuesContent := `environment: prod
-replicaCount: 3
-image:
-  tag: "1.0.0"
-`
-
-	opts = &github.RepositoryContentFileOptions{
-		Message: github.Ptr("Add prod environment values"),
-		Content: []byte(prodValuesContent),
-		Branch:  github.Ptr(branch),
-	}
-
-	if _, _, err := client.Repositories.CreateFile(ctx, owner, repo, prodValuesPath, opts); err != nil {
-		return fmt.Errorf("creating prod values: %w", err)
+		if _, _, err := client.Repositories.CreateFile(ctx, owner, repo, repoPath, opts); err != nil {
+			return fmt.Errorf("creating %s: %w", repoPath, err)
+		}
 	}
 
 	return nil
@@ -1317,13 +1194,12 @@ image:
 func updateChartValues(ctx context.Context, client *github.Client, owner, repo, branch string) error {
 	chartName := "multi-env-app"
 
-	// Update dev environment values - increase replicas
+	// Update dev environment values
 	devValuesPath := fmt.Sprintf("charts/%s/env/dev-values.yaml", chartName)
-	devValuesContent := `environment: dev
-replicaCount: 2
-image:
-  tag: dev-v2
-`
+	devValuesContent, err := readFixture("multi-env-app/env/dev-values-updated.yaml")
+	if err != nil {
+		return fmt.Errorf("reading dev values fixture: %w", err)
+	}
 
 	// Get existing file to get its SHA
 	existingFile, _, _, err := client.Repositories.GetContents(ctx, owner, repo, devValuesPath, &github.RepositoryContentGetOptions{
@@ -1335,7 +1211,7 @@ image:
 
 	opts := &github.RepositoryContentFileOptions{
 		Message: github.Ptr("Update dev environment - increase replicas to 2"),
-		Content: []byte(devValuesContent),
+		Content: devValuesContent,
 		Branch:  github.Ptr(branch),
 		SHA:     existingFile.SHA,
 	}
@@ -1345,13 +1221,12 @@ image:
 		return fmt.Errorf("updating dev values: %w", err)
 	}
 
-	// Update prod environment values - change image tag
+	// Update prod environment values
 	prodValuesPath := fmt.Sprintf("charts/%s/env/prod-values.yaml", chartName)
-	prodValuesContent := `environment: prod
-replicaCount: 5
-image:
-  tag: "2.0.0"
-`
+	prodValuesContent, err := readFixture("multi-env-app/env/prod-values-updated.yaml")
+	if err != nil {
+		return fmt.Errorf("reading prod values fixture: %w", err)
+	}
 
 	existingFile, _, _, err = client.Repositories.GetContents(ctx, owner, repo, prodValuesPath, &github.RepositoryContentGetOptions{
 		Ref: branch,
@@ -1362,7 +1237,7 @@ image:
 
 	opts = &github.RepositoryContentFileOptions{
 		Message: github.Ptr("Update prod environment - bump version to 2.0.0 and increase replicas"),
-		Content: []byte(prodValuesContent),
+		Content: prodValuesContent,
 		Branch:  github.Ptr(branch),
 		SHA:     existingFile.SHA,
 	}

@@ -1,0 +1,4 @@
+environment: prod
+replicaCount: 5
+image:
+  tag: "2.0.0"

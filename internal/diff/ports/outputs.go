@@ -34,10 +34,6 @@ type ReportingPort interface {
 
 	// PostComment posts a PR comment with diff results for a chart.
 	PostComment(ctx context.Context, pr domain.PRContext, results []domain.DiffResult) error
-
-	// Deprecated: Use CreateInProgressCheck + UpdateCheckWithResults instead.
-	// Kept for backwards compatibility with tests.
-	PostResult(ctx context.Context, pr domain.PRContext, results []domain.DiffResult) error
 }
 
 // FileChangesPort abstracts checking which files have been modified in a PR.

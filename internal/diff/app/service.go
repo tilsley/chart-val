@@ -163,7 +163,7 @@ func (s *DiffService) processChart(ctx context.Context, pr domain.PRContext, cha
 				BaseRef:     pr.BaseRef,
 				HeadRef:     pr.HeadRef,
 				Status:  domain.StatusError,
-				Summary: fmt.Sprintf("❌ Error computing diff: %s", err),
+				Summary: err.Error(),
 			})
 			continue
 		}
@@ -182,7 +182,7 @@ func (s *DiffService) diffChartEnv(ctx context.Context, pr domain.PRContext, cha
 		s.logger.Info("rendering base manifest", "chart", chartName, "env", env.Name, "baseDir", baseDir, "valueFiles", env.ValueFiles)
 		baseManifest, err = s.renderer.Render(ctx, baseDir, env.ValueFiles)
 		if err != nil {
-			return domain.DiffResult{}, fmt.Errorf("rendering base: %w", err)
+			return domain.DiffResult{}, fmt.Errorf("failed to render base branch: %w", err)
 		}
 		s.logger.Info("base manifest rendered", "chart", chartName, "env", env.Name, "size", len(baseManifest))
 	} else {
@@ -192,7 +192,7 @@ func (s *DiffService) diffChartEnv(ctx context.Context, pr domain.PRContext, cha
 	s.logger.Info("rendering head manifest", "chart", chartName, "env", env.Name, "headDir", headDir, "valueFiles", env.ValueFiles)
 	headManifest, err := s.renderer.Render(ctx, headDir, env.ValueFiles)
 	if err != nil {
-		return domain.DiffResult{}, fmt.Errorf("rendering head: %w", err)
+		return domain.DiffResult{}, fmt.Errorf("failed to render PR changes: %w", err)
 	}
 	s.logger.Info("head manifest rendered", "chart", chartName, "env", env.Name, "size", len(headManifest))
 

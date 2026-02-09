@@ -58,11 +58,6 @@ func (m *mockReporter) PostComment(_ context.Context, _ domain.PRContext, _ []do
 	return nil
 }
 
-func (m *mockReporter) PostResult(_ context.Context, _ domain.PRContext, results []domain.DiffResult) error {
-	m.results = results
-	return nil
-}
-
 type mockFileChanges struct {
 	files []string
 }
