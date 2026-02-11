@@ -1,3 +1,4 @@
+// Package githubin handles incoming GitHub webhook events.
 package githubin
 
 import (
@@ -74,7 +75,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Dispatch asynchronously — GitHub has a 10s webhook timeout.
 	// Use a detached context since r.Context() is cancelled after the response.
-	go func() {
+	go func() { //nolint:contextcheck // Intentionally using detached context for async background job
 		if err := h.useCase.Execute(context.Background(), pr); err != nil {
 			h.logger.Error("diff execution failed",
 				"owner", pr.Owner,

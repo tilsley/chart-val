@@ -13,7 +13,7 @@ import (
 // Mock adapters for testing
 
 type mockSourceControl struct {
-	charts map[string]bool // map of chartPath -> exists
+	charts map[string]bool // map of "ref:chartPath" -> exists
 }
 
 func (m *mockSourceControl) FetchChartFiles(_ context.Context, _, _, ref, chartPath string) (string, func(), error) {
@@ -21,55 +21,78 @@ func (m *mockSourceControl) FetchChartFiles(_ context.Context, _, _, ref, chartP
 	if !m.charts[key] {
 		return "", nil, domain.NewNotFoundError(chartPath, ref)
 	}
-	// Return a dummy path - won't actually be used in this test
-	return "/tmp/dummy", func() {}, nil
+	// Return ref:chartPath as dir so renderer can differentiate
+	return key, func() {}, nil
 }
 
-type mockEnvDiscovery struct{}
-
-func (m *mockEnvDiscovery) DiscoverEnvironments(_ context.Context, _ string) ([]domain.EnvironmentConfig, error) {
-	return []domain.EnvironmentConfig{
-		{Name: "prod", ValueFiles: []string{"env/prod-values.yaml"}},
-	}, nil
+type mockChangedCharts struct {
+	charts []domain.ChangedChart
 }
 
-type mockRenderer struct{}
+func (m *mockChangedCharts) GetChangedCharts(_ context.Context, _ domain.PRContext) ([]domain.ChangedChart, error) {
+	return m.charts, nil
+}
 
-func (m *mockRenderer) Render(_ context.Context, _ string, _ []string) ([]byte, error) {
+type mockChartConfig struct {
+	config  domain.ChartConfig            // default config
+	configs map[string]domain.ChartConfig // per-chart overrides
+}
+
+func (m *mockChartConfig) GetChartConfig(
+	_ context.Context,
+	_ domain.PRContext,
+	chartName string,
+) (domain.ChartConfig, error) {
+	if m.configs != nil {
+		if cfg, ok := m.configs[chartName]; ok {
+			return cfg, nil
+		}
+	}
+	return m.config, nil
+}
+
+type mockRenderer struct {
+	manifests map[string]string // chartDir -> rendered manifest
+}
+
+func (m *mockRenderer) Render(_ context.Context, chartDir string, _ []string) ([]byte, error) {
+	if m.manifests != nil {
+		if content, ok := m.manifests[chartDir]; ok {
+			return []byte(content), nil
+		}
+	}
 	return []byte("dummy manifest"), nil
 }
 
 type mockReporter struct {
-	results    []domain.DiffResult
-	checkRunID int64
+	results      []domain.DiffResult
+	checkRunID   int64
+	commentCount int
 }
 
-func (m *mockReporter) CreateInProgressCheck(_ context.Context, _ domain.PRContext, _ string) (int64, error) {
+func (m *mockReporter) CreateInProgressCheck(_ context.Context, _ domain.PRContext) (int64, error) {
 	m.checkRunID++
 	return m.checkRunID, nil
 }
 
-func (m *mockReporter) UpdateCheckWithResults(_ context.Context, _ domain.PRContext, _ int64, results []domain.DiffResult) error {
+func (m *mockReporter) UpdateCheckWithResults(
+	_ context.Context,
+	_ domain.PRContext,
+	_ int64,
+	results []domain.DiffResult,
+) error {
 	m.results = append(m.results, results...)
 	return nil
 }
 
 func (m *mockReporter) PostComment(_ context.Context, _ domain.PRContext, _ []domain.DiffResult) error {
+	m.commentCount++
 	return nil
-}
-
-type mockFileChanges struct {
-	files []string
-}
-
-func (m *mockFileChanges) GetChangedFiles(_ context.Context, _, _ string, _ int) ([]string, error) {
-	return m.files, nil
 }
 
 type mockDiff struct{}
 
 func (m *mockDiff) ComputeDiff(baseName, headName string, base, head []byte) string {
-	// Simple mock: return non-empty if content differs
 	if string(base) != string(head) {
 		return fmt.Sprintf("--- %s\n+++ %s\n@@ -1 +1 @@\n-%s\n+%s", baseName, headName, string(base), string(head))
 	}
@@ -77,30 +100,21 @@ func (m *mockDiff) ComputeDiff(baseName, headName string, base, head []byte) str
 }
 
 func TestService_NoChartChanges(t *testing.T) {
-	// Setup mocks
 	srcCtrl := &mockSourceControl{charts: map[string]bool{}}
-	envDiscovery := &mockEnvDiscovery{}
+	changedCharts := &mockChangedCharts{charts: nil}
+	chartConfig := &mockChartConfig{}
 	renderer := &mockRenderer{}
 	reporter := &mockReporter{}
-	fileChanges := &mockFileChanges{
-		// Changed files NOT in charts/ directory
-		files: []string{
-			"README.md",
-			"src/main.go",
-			"config/settings.yaml",
-			".github/workflows/ci.yml",
-		},
-	}
-
-	log := logger.New("error")
 	semanticDiff := &mockDiff{}
 	unifiedDiff := &mockDiff{}
-	svc := NewDiffService(srcCtrl, envDiscovery, renderer, reporter, fileChanges, semanticDiff, unifiedDiff, log)
+	log := logger.New("error")
+
+	svc := NewDiffService(srcCtrl, changedCharts, nil, chartConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
 		Repo:     "test-repo",
-		PRNumber: 1,
+		PRNumber: 42,
 		BaseRef:  "main",
 		HeadRef:  "feat/update-readme",
 		HeadSHA:  "abc123",
@@ -111,12 +125,10 @@ func TestService_NoChartChanges(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	// Should have NO results - no check runs created
 	if len(reporter.results) != 0 {
 		t.Errorf("expected 0 results when no chart changes, got %d", len(reporter.results))
 	}
 
-	// Should have NO check runs created
 	if reporter.checkRunID != 0 {
 		t.Errorf("expected no check runs created, but checkRunID is %d", reporter.checkRunID)
 	}
@@ -125,26 +137,32 @@ func TestService_NoChartChanges(t *testing.T) {
 }
 
 func TestService_NewChartNotInBase(t *testing.T) {
-	// Setup mocks
 	srcCtrl := &mockSourceControl{
 		charts: map[string]bool{
-			// new-chart exists in HEAD but NOT in BASE
 			"feat/add-chart:charts/new-chart": true,
-			// base ref doesn't have it
-			"main:charts/new-chart": false,
+			"main:charts/new-chart":           false,
 		},
 	}
-	envDiscovery := &mockEnvDiscovery{}
+	changedCharts := &mockChangedCharts{
+		charts: []domain.ChangedChart{
+			{Name: "new-chart", Path: "charts/new-chart"},
+		},
+	}
+	chartConfig := &mockChartConfig{
+		config: domain.ChartConfig{
+			Path: "charts/new-chart",
+			Environments: []domain.EnvironmentConfig{
+				{Name: "prod", ValueFiles: []string{"env/prod-values.yaml"}},
+			},
+		},
+	}
 	renderer := &mockRenderer{}
 	reporter := &mockReporter{}
-	fileChanges := &mockFileChanges{
-		files: []string{"charts/new-chart/Chart.yaml"},
-	}
-
-	log := logger.New("error") // Quiet logs for test
 	semanticDiff := &mockDiff{}
 	unifiedDiff := &mockDiff{}
-	svc := NewDiffService(srcCtrl, envDiscovery, renderer, reporter, fileChanges, semanticDiff, unifiedDiff, log)
+	log := logger.New("error")
+
+	svc := NewDiffService(srcCtrl, changedCharts, nil, chartConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -160,15 +178,12 @@ func TestService_NewChartNotInBase(t *testing.T) {
 		t.Fatalf("Execute failed: %v", err)
 	}
 
-	// Check the results - should have one error result
 	if len(reporter.results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(reporter.results))
 	}
 
 	result := reporter.results[0]
 
-	// With the fix, we should NOT get an error result
-	// Instead, we should get a proper diff showing all additions
 	if strings.Contains(result.Summary, "Error fetching base chart") {
 		t.Errorf("should not have error result anymore, but got: %s", result.Summary)
 	}
@@ -186,8 +201,104 @@ func TestService_NewChartNotInBase(t *testing.T) {
 	t.Logf("   Status: %v", result.Status)
 }
 
+func TestService_ThreeChartsOneChanged(t *testing.T) {
+	// 3 charts in the PR, only app-a has actual changes
+	srcCtrl := &mockSourceControl{
+		charts: map[string]bool{
+			"main:charts/app-a":        true,
+			"feat/update:charts/app-a": true,
+			"main:charts/app-b":        true,
+			"feat/update:charts/app-b": true,
+			"main:charts/app-c":        true,
+			"feat/update:charts/app-c": true,
+		},
+	}
+	changedCharts := &mockChangedCharts{
+		charts: []domain.ChangedChart{
+			{Name: "app-a", Path: "charts/app-a"},
+			{Name: "app-b", Path: "charts/app-b"},
+			{Name: "app-c", Path: "charts/app-c"},
+		},
+	}
+	envs := []domain.EnvironmentConfig{{Name: "prod", ValueFiles: []string{"env/prod-values.yaml"}}}
+	chartConfig := &mockChartConfig{
+		configs: map[string]domain.ChartConfig{
+			"app-a": {Path: "charts/app-a", Environments: envs},
+			"app-b": {Path: "charts/app-b", Environments: envs},
+			"app-c": {Path: "charts/app-c", Environments: envs},
+		},
+	}
+	// app-a: different manifests between base and head (has changes)
+	// app-b and app-c: same manifests (no changes)
+	renderer := &mockRenderer{
+		manifests: map[string]string{
+			"main:charts/app-a":        "replicas: 1",
+			"feat/update:charts/app-a": "replicas: 3",
+			// app-b and app-c: same in base and head (default "dummy manifest")
+		},
+	}
+	reporter := &mockReporter{}
+	semanticDiff := &mockDiff{}
+	unifiedDiff := &mockDiff{}
+	log := logger.New("error")
+
+	svc := NewDiffService(srcCtrl, changedCharts, nil, chartConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
+
+	pr := domain.PRContext{
+		Owner:    "test-owner",
+		Repo:     "test-repo",
+		PRNumber: 1,
+		BaseRef:  "main",
+		HeadRef:  "feat/update",
+		HeadSHA:  "abc123",
+	}
+
+	err := svc.Execute(context.Background(), pr)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	// ONE check run for the entire PR
+	if reporter.checkRunID != 1 {
+		t.Errorf("expected exactly 1 check run, got %d", reporter.checkRunID)
+	}
+
+	// 3 results total (one per chart, one env each)
+	if len(reporter.results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(reporter.results))
+	}
+
+	// Only 1 comment: for app-a (the chart with changes)
+	// app-b and app-c have no changes, so no comments
+	if reporter.commentCount != 1 {
+		t.Errorf("expected 1 comment (only for changed chart), got %d", reporter.commentCount)
+	}
+
+	// Verify which charts have changes
+	changesCount := 0
+	noChangesCount := 0
+	for _, r := range reporter.results {
+		if r.Status == domain.StatusChanges {
+			changesCount++
+			if r.ChartName != "app-a" {
+				t.Errorf("expected changes only for app-a, got changes for %s", r.ChartName)
+			}
+		} else {
+			noChangesCount++
+		}
+	}
+
+	if changesCount != 1 {
+		t.Errorf("expected 1 chart with changes, got %d", changesCount)
+	}
+	if noChangesCount != 2 {
+		t.Errorf("expected 2 charts without changes, got %d", noChangesCount)
+	}
+
+	t.Logf("✓ 3 charts, 1 changed: 1 check run, 1 comment, 2 silent")
+}
+
 func TestExtractChartNames(t *testing.T) {
-	// This now tests the domain function
 	tests := []struct {
 		name     string
 		files    []string
@@ -249,9 +360,9 @@ func TestExtractChartNames(t *testing.T) {
 		{
 			name: "invalid chart paths",
 			files: []string{
-				"charts/",         // no chart name
-				"charts",          // not a path
-				"not-charts/app/", // wrong prefix
+				"charts/",
+				"charts",
+				"not-charts/app/",
 				"charts/app/file.yaml",
 			},
 			expected: []string{"app"},
@@ -267,7 +378,6 @@ func TestExtractChartNames(t *testing.T) {
 				return
 			}
 
-			// Convert to maps for easier comparison (order doesn't matter)
 			resultMap := make(map[string]bool)
 			for _, name := range result {
 				resultMap[name] = true

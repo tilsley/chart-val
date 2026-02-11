@@ -1,0 +1,16 @@
+image:
+  repository: redis
+  tag: "7.2.0"
+
+replicaCount: 1
+
+service:
+  port: 6379
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 100m
+    memory: 128Mi

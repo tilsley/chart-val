@@ -1,40 +1,88 @@
-version: 1
+version: 3
 
-# Hexagonal Architecture - Dependency Flow: domain <- ports <- app <- adapters
+# Hexagonal Architecture Validation
+# Flow: domain <- ports <- app <- adapters
 
+# Top-level dependency rules
+deps:
+  # Domain: no dependencies on other project components
+  diff-domain:
+    anyVendorDeps: true      # Can use standard library / vendor
+    anyProjectDeps: false    # Cannot depend on other project components
+
+  # Ports: can use domain
+  diff-ports:
+    mayDependOn:
+      - diff-domain
+    anyVendorDeps: true
+
+  # App: can use domain and ports (not adapters!)
+  diff-app:
+    mayDependOn:
+      - diff-domain
+      - diff-ports
+      - platform  # Allow platform for logging in tests
+    anyVendorDeps: true
+
+  # Adapters: can use domain, ports, and platform
+  diff-adapters:
+    mayDependOn:
+      - diff-domain
+      - diff-ports
+      - platform
+    anyVendorDeps: true
+
+  # Platform: shared infrastructure, no project dependencies
+  platform:
+    anyVendorDeps: true
+    anyProjectDeps: false
+
+  # CMD: main packages can use everything
+  cmd:
+    anyVendorDeps: true
+    anyProjectDeps: true
+
+  # Tests: E2E tests can use everything
+  tests:
+    anyVendorDeps: true
+    anyProjectDeps: true
+
+# Component definitions
 components:
-  - name: diff-domain
+  # Domain layer: Core business logic
+  diff-domain:
     in: internal/diff/domain
 
-  - name: diff-ports
+  # Ports layer: Interfaces (contracts)
+  diff-ports:
     in: internal/diff/ports
-    mayDependOn: [diff-domain]
 
-  - name: diff-app
+  # Application layer: Use cases and orchestration
+  diff-app:
     in: internal/diff/app
-    mayDependOn: [diff-domain, diff-ports]
 
-  - name: diff-adapters
-    in: internal/diff/adapters
-    mayDependOn: [diff-domain, diff-ports, platform]
+  # Adapters layer: External integrations
+  # CRITICAL: Adapters must NOT depend on other adapters or app layer
+  diff-adapters:
+    in: internal/diff/adapters/**
 
-  - name: platform
-    in: internal/platform
+  # Platform layer: Infrastructure (config, logging, etc.)
+  platform:
+    in: internal/platform/**
 
-rules:
-  - from: diff-domain
-    shouldNot: [{dependOn: [diff-ports, diff-app, diff-adapters, platform]}]
+  # CMD layer: Main entry points
+  cmd:
+    in: cmd/**
 
-  - from: diff-ports
-    shouldNot: [{dependOn: [diff-app, diff-adapters, platform]}]
-
-  - from: diff-app
-    shouldNot: [{dependOn: [diff-adapters, platform]}]
-
-  - from: diff-adapters
-    shouldNot: [{dependOn: [diff-app, diff-adapters]}]
+  # Test layer: E2E and integration tests
+  tests:
+    in: test/**
 
 exclude:
-  - testdata
-  - vendor
-  - "**/*_test.go"
+  - "testdata"
+  - "vendor"
+  - "*_test.go"
+  - "mocks"
+  - "fixtures"
+  - "integration_test.go"
+  - "service_test.go"

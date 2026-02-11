@@ -1,3 +1,4 @@
+// Package helmcli provides Helm template rendering via the helm CLI.
 package helmcli
 
 import (
@@ -28,7 +29,8 @@ func New() (*Adapter, error) {
 // Render runs `helm template` on the given chart directory with the
 // specified value files and returns the rendered manifest bytes.
 func (a *Adapter) Render(ctx context.Context, chartDir string, valueFiles []string) ([]byte, error) {
-	args := []string{"template", "chart-val-render", chartDir}
+	args := make([]string, 0, 3+2*len(valueFiles))
+	args = append(args, "template", "chart-val-render", chartDir)
 	for _, vf := range valueFiles {
 		args = append(args, "-f", filepath.Join(chartDir, vf))
 	}
@@ -36,6 +38,7 @@ func (a *Adapter) Render(ctx context.Context, chartDir string, valueFiles []stri
 	logger := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	logger.Info("running helm template", "chartDir", chartDir, "valueFiles", valueFiles, "args", args)
 
+	//nolint:gosec // G204: chartDir and valueFiles are from source control, not user input
 	cmd := exec.CommandContext(ctx, a.helmBin, args...)
 
 	var stdout, stderr bytes.Buffer

@@ -1,3 +1,4 @@
+// Package linediff provides simple line-by-line diff computation.
 package linediff
 
 import (

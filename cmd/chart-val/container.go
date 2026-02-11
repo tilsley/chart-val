@@ -1,3 +1,4 @@
+// Package main provides the chart-val webhook server for validating Helm chart changes.
 package main
 
 import (
@@ -6,6 +7,8 @@ import (
 
 	gogithub "github.com/google/go-github/v68/github"
 
+	argoapps "github.com/nathantilsley/chart-val/internal/diff/adapters/argo_apps"
+	discoveredcharts "github.com/nathantilsley/chart-val/internal/diff/adapters/discovered_charts"
 	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
 	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
 	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
@@ -45,17 +48,45 @@ func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
 		return nil, fmt.Errorf("creating helm adapter: %w", err)
 	}
 	reporter := githubout.New(githubClient)
-	fileChanges := prfiles.New(githubClient)
+	changedCharts := prfiles.New(githubClient, log)
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
-	// Domain service
+	// Chart config adapters
+	// Always create discovery adapter (used as fallback)
+	discoveryAdapter := discoveredcharts.New(envDiscovery, sourceCtrl)
+
+	// Optionally create Argo adapter (source of truth when available)
+	var argoAdapter ports.ChartConfigPort
+	if cfg.ArgoAppsRepo != "" {
+		log.Info("argo apps integration enabled",
+			"repo", cfg.ArgoAppsRepo,
+			"syncInterval", cfg.ArgoAppsSyncInterval,
+			"folderPattern", cfg.ArgoAppsFolderPattern,
+		)
+		adapter, err := argoapps.New(
+			cfg.ArgoAppsRepo,
+			cfg.ArgoAppsLocalPath,
+			cfg.ArgoAppsSyncInterval,
+			cfg.ArgoAppsFolderPattern,
+			log,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("creating argo apps adapter: %w", err)
+		}
+		argoAdapter = adapter
+	} else {
+		log.Info("argo apps not configured, using discovery only")
+	}
+
+	// Domain service (handles composite strategy: Argo → Discovery → Base chart)
 	diffService := app.NewDiffService(
 		sourceCtrl,
-		envDiscovery,
+		changedCharts,
+		argoAdapter,      // nil if not configured
+		discoveryAdapter, // always present
 		helmRenderer,
 		reporter,
-		fileChanges,
 		semanticDiff,
 		unifiedDiff,
 		log,

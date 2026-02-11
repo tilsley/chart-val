@@ -1,12 +1,16 @@
+// Package domain contains core business entities and types for diff operations.
 package domain
 
 // Status represents the outcome of a diff operation.
 type Status int
 
 const (
-	StatusSuccess Status = iota // No changes detected
-	StatusChanges                // Changes detected
-	StatusError                  // Error occurred during diff
+	// StatusSuccess indicates no changes were detected in the diff.
+	StatusSuccess Status = iota
+	// StatusChanges indicates changes were detected in the diff.
+	StatusChanges
+	// StatusError indicates an error occurred during the diff operation.
+	StatusError
 )
 
 // String returns the string representation of the Status.

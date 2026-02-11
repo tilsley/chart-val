@@ -1,3 +1,4 @@
+// Package ports defines interfaces (contracts) for the diff service.
 package ports
 
 import (

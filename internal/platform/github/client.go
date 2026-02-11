@@ -1,3 +1,4 @@
+// Package github provides authenticated GitHub API clients.
 package github
 
 import (

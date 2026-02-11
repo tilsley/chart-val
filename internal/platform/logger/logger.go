@@ -1,3 +1,4 @@
+// Package logger provides structured logging with colored output.
 package logger
 
 import (
@@ -181,6 +182,8 @@ func (h *coloredTextHandler) WithGroup(name string) slog.Handler {
 }
 
 // init ensures we print a notice if colors are disabled
+//
+//nolint:gochecknoinits // Required to print color status on startup
 func init() {
 	if !shouldUseColor() && os.Getenv("LOG_FORMAT") != "json" {
 		fmt.Fprintf(os.Stderr, "# Colored logs disabled (NO_COLOR or LOG_COLOR=false)\n")

@@ -71,11 +71,11 @@ func TestDiffResult_PreferredDiff(t *testing.T) {
 
 func TestCountByStatus(t *testing.T) {
 	tests := []struct {
-		name         string
-		results      []DiffResult
-		wantSuccess  int
-		wantChanges  int
-		wantErrors   int
+		name        string
+		results     []DiffResult
+		wantSuccess int
+		wantChanges int
+		wantErrors  int
 	}{
 		{
 			name:        "empty results",

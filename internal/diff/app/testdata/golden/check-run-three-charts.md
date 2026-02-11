@@ -6,7 +6,7 @@
 ## Helm Diff
 
 ### Summary
-Analyzed 1 chart(s): 1 with changes, 0 unchanged
+Analyzed 3 chart(s): 1 with changes, 2 unchanged
 
 ### Output
 ## my-app
@@ -212,4 +212,11 @@ spec.template.spec.containers.my-app.env  (apps/v1/Deployment/my-app)
 ```
 
 </details>
+
+## Unchanged charts
+
+The following charts were analyzed and had no changes across all environments:
+
+- `stable-app`
+- `another-app`
 

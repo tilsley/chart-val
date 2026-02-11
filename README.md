@@ -11,6 +11,7 @@ A GitHub App that automatically generates Helm chart diffs for pull requests usi
 - Posts unified diffs as GitHub Check Runs
 - Multi-environment support (staging, prod, etc.)
 - Real Helm template rendering for accurate diffs
+- **Argo CD integration**: Read chart configs from Argo Application manifests (see [docs/ARGO_INTEGRATION.md](docs/ARGO_INTEGRATION.md))
 
 ## Setup
 
@@ -46,7 +47,9 @@ cp .env.example .env
 
 Both `chart-val.pem` and `.env` are gitignored and will NOT be committed.
 
-### 3. Repository Configuration
+### 3. Chart Configuration
+
+**Option A: Repository Config File (Simple)**
 
 Add a `.chart-val.yaml` file to the root of repositories you want to monitor:
 
@@ -61,6 +64,26 @@ charts:
         valueFiles:
           - env/prod-values.yaml
 ```
+
+**Option B: Argo CD Integration (Advanced)**
+
+For organizations with many Helm charts managed by Argo CD, chart-val can automatically discover charts from your Argo Application manifests:
+
+```bash
+# Add to .env
+ARGO_APPS_REPO=https://github.com/myorg/gitops
+ARGO_APPS_PATH=argocd/applications
+ARGO_APPS_SYNC_INTERVAL=1h
+```
+
+Benefits:
+- ✅ Single source of truth (Argo CD Applications)
+- ✅ No duplicate configuration in chart repos
+- ✅ Automatic discovery of new environments
+- ✅ Fast indexed lookups (~1ms)
+- ✅ Works with large repos (1000s of apps)
+
+See [docs/ARGO_INTEGRATION.md](docs/ARGO_INTEGRATION.md) for details.
 
 ## Development
 

@@ -1,0 +1,16 @@
+image:
+  repository: nginx
+  tag: "1.25.0"
+
+replicaCount: 2
+
+service:
+  port: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi

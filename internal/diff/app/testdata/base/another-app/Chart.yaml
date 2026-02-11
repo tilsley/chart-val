@@ -1,0 +1,5 @@
+apiVersion: v2
+name: another-app
+description: A stable redis application
+version: 2.0.0
+type: application

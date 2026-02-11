@@ -1,3 +1,4 @@
+// Package envdiscovery discovers chart environments by scanning the env/ directory.
 package envdiscovery
 
 import (
@@ -29,6 +30,7 @@ func (a *Adapter) DiscoverEnvironments(_ context.Context, chartDir string) ([]do
 	entries, err := os.ReadDir(envDir)
 	if err != nil {
 		// No env/ directory → default environment
+		//nolint:nilerr // Intentionally return default config instead of error when dir doesn't exist
 		return []domain.EnvironmentConfig{
 			{Name: "default", ValueFiles: nil},
 		}, nil

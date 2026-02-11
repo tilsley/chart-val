@@ -1,14 +1,16 @@
-# chart-val: new-chart
+# chart-val
 
 **Status:** completed
 **Conclusion:** success
 
-## Helm diff — new-chart
+## Helm Diff
 
 ### Summary
-Analyzed 1 environment(s): 1 changed, 0 unchanged
+Analyzed 1 chart(s): 1 with changes, 0 unchanged
 
 ### Output
+## new-chart
+
 <details><summary>prod — Changed</summary>
 
 **Semantic Diff (dyff):**
@@ -69,3 +71,4 @@ Analyzed 1 environment(s): 1 changed, 0 unchanged
 ```
 
 </details>
+

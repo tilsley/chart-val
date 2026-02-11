@@ -31,7 +31,20 @@
       "Bash(WEBHOOK_SECRET=test ./bin/chart-val-cli:*)",
       "Bash(WEBHOOK_SECRET=test GITHUB_PRIVATE_KEY=\"test\" GITHUB_APP_ID=1 ./bin/chart-val-cli:*)",
       "Bash(dyff --help:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(go get gopkg.in/yaml.v3)",
+      "Bash(go env:*)",
+      "Bash(~/go/bin/go-arch-lint check:*)",
+      "Bash(~/go/bin/go-arch-lint version)",
+      "Bash(ls:*)",
+      "Bash(golangci-lint version:*)",
+      "Bash(~/go/bin/go-arch-lint init:*)",
+      "Bash(golangci-lint linters:*)",
+      "Bash(golangci-lint help:*)",
+      "Bash(golangci-lint run:*)",
+      "Bash(golangci-lint:*)",
+      "Bash(grep:*)",
+      "WebFetch(domain:golangci-lint.run)"
     ]
   }
 }

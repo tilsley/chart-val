@@ -25,20 +25,27 @@ type RendererPort interface {
 
 // ReportingPort abstracts posting diff results back to the pull request.
 type ReportingPort interface {
-	// CreateInProgressCheck creates a check run in "in_progress" status for a chart
-	// and returns the check run ID for later updates.
-	CreateInProgressCheck(ctx context.Context, pr domain.PRContext, chartName string) (checkRunID int64, err error)
+	// CreateInProgressCheck creates a single check run in "in_progress" status
+	// for the entire PR and returns the check run ID for later updates.
+	CreateInProgressCheck(ctx context.Context, pr domain.PRContext) (checkRunID int64, err error)
 
 	// UpdateCheckWithResults updates an existing check run with final diff results.
-	UpdateCheckWithResults(ctx context.Context, pr domain.PRContext, checkRunID int64, results []domain.DiffResult) error
+	UpdateCheckWithResults(
+		ctx context.Context,
+		pr domain.PRContext,
+		checkRunID int64,
+		results []domain.DiffResult,
+	) error
 
-	// PostComment posts a PR comment with diff results for a chart.
+	// PostComment posts a PR comment with diff results for a single chart.
 	PostComment(ctx context.Context, pr domain.PRContext, results []domain.DiffResult) error
 }
 
-// FileChangesPort abstracts checking which files have been modified in a PR.
-type FileChangesPort interface {
-	GetChangedFiles(ctx context.Context, owner, repo string, prNumber int) ([]string, error)
+// ChangedChartsPort abstracts detecting which charts were modified in a PR.
+// It handles fetching changed files, identifying Chart.yaml changes, and
+// reading the chart name from the file content.
+type ChangedChartsPort interface {
+	GetChangedCharts(ctx context.Context, pr domain.PRContext) ([]domain.ChangedChart, error)
 }
 
 // DiffPort abstracts computing diffs between two manifests.
@@ -48,4 +55,12 @@ type DiffPort interface {
 	// ComputeDiff returns a diff between base and head manifests.
 	// baseName and headName are used for labeling (e.g., "my-app/prod (main)").
 	ComputeDiff(baseName, headName string, base, head []byte) string
+}
+
+// ChartConfigPort abstracts resolving environment configurations for a chart.
+// Different implementations can read from Argo CD Application manifests,
+// discover from directory structure, or other sources.
+type ChartConfigPort interface {
+	// GetChartConfig returns the chart config (path + environments) for a given chart name.
+	GetChartConfig(ctx context.Context, pr domain.PRContext, chartName string) (domain.ChartConfig, error)
 }
