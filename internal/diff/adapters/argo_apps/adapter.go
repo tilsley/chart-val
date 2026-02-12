@@ -165,7 +165,9 @@ func (a *Adapter) rebuildIndex() error {
 	// Walk the entire repository looking for YAML files
 	err := filepath.Walk(a.localPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			return err
+			// Log errors accessing individual files but continue scanning
+			a.logger.Warn("error accessing path, skipping", "path", path, "error", err)
+			return nil
 		}
 
 		if shouldSkipPath(info) {

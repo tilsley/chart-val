@@ -272,6 +272,75 @@ func TestExtractFromFolderStructure(t *testing.T) {
 	}
 }
 
+func TestRebuildIndex_ContinuesOnErrors(t *testing.T) {
+	t.Parallel()
+
+	tmpDir := t.TempDir()
+
+	// Create test directory with some valid apps and an inaccessible file
+	testFiles := map[string]string{
+		"my-app/prod/app.yaml": `apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  source:
+    repoURL: https://github.com/example/charts
+    path: charts/my-app
+`,
+		"broken/invalid.yaml": "this will be made inaccessible",
+		"other-app/dev/app.yaml": `apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  source:
+    repoURL: https://github.com/example/charts
+    path: charts/other-app
+`,
+	}
+
+	for path, content := range testFiles {
+		fullPath := filepath.Join(tmpDir, path)
+		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
+			t.Fatalf("failed to create directory: %v", err)
+		}
+		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
+			t.Fatalf("failed to write test file %s: %v", path, err)
+		}
+	}
+
+	// Make the broken file inaccessible by removing all permissions
+	brokenPath := filepath.Join(tmpDir, "broken/invalid.yaml")
+	if err := os.Chmod(brokenPath, 0o000); err != nil {
+		t.Fatalf("failed to chmod test file: %v", err)
+	}
+	// Restore permissions for cleanup
+	defer func() {
+		_ = os.Chmod(brokenPath, 0o600)
+	}()
+
+	adapter := &Adapter{
+		localPath:     tmpDir,
+		folderPattern: "{chartName}/{envName}",
+		index:         make(map[string][]AppData),
+		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+
+	// Should successfully build index despite the inaccessible file
+	if err := adapter.rebuildIndex(); err != nil {
+		t.Fatalf("rebuildIndex should not fail on individual file errors: %v", err)
+	}
+
+	// Should have indexed the 2 valid apps, skipping the broken one
+	if len(adapter.index) != 2 {
+		t.Errorf("expected 2 charts in index, got %d", len(adapter.index))
+	}
+
+	if _, exists := adapter.index["my-app"]; !exists {
+		t.Errorf("my-app should be indexed")
+	}
+	if _, exists := adapter.index["other-app"]; !exists {
+		t.Errorf("other-app should be indexed")
+	}
+}
+
 func TestRebuildIndex(t *testing.T) {
 	t.Parallel()
 
