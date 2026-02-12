@@ -18,6 +18,9 @@ import (
 	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
 
+// ErrNotAnApplication is returned when a manifest is not an Argo Application.
+var ErrNotAnApplication = errors.New("not an Application")
+
 // Adapter implements ports.ChartConfigPort by reading Argo CD Application
 // manifests from a locally cloned Git repository. It scans the entire repo
 // for Application files and extracts environment names from directory paths.
@@ -165,41 +168,20 @@ func (a *Adapter) rebuildIndex() error {
 			return err
 		}
 
-		// Skip .git directory
-		if info.IsDir() && info.Name() == ".git" {
-			return filepath.SkipDir
+		if shouldSkipPath(info) {
+			return handleSkip(info)
 		}
 
-		if info.IsDir() {
+		if !isYAMLFile(path) {
 			return nil
 		}
 
-		// Only process .yaml and .yml files
-		ext := filepath.Ext(path)
-		if ext != ".yaml" && ext != ".yml" {
-			return nil
+		// Process the YAML file as a potential Argo Application
+		app, shouldIndex := a.processApplicationFile(path)
+		if shouldIndex {
+			index[app.ChartName] = append(index[app.ChartName], *app)
+			appCount++
 		}
-
-		// Try to parse as Argo Application
-		app, err := a.parseArgoApp(path)
-		if err != nil {
-			// Not an Application or invalid - skip silently
-			return nil //nolint:nilerr // Intentionally skip non-Application files
-		}
-
-		// Extract chart name and environment from folder structure
-		chartName, env, err := a.extractFromFolderStructure(path)
-		if err != nil {
-			a.logger.Warn("failed to extract chart/env from path", "path", path, "error", err)
-			return nil
-		}
-
-		app.ChartName = chartName
-		app.Environment = env
-
-		// Index by chart name
-		index[app.ChartName] = append(index[app.ChartName], *app)
-		appCount++
 
 		return nil
 	})
@@ -212,6 +194,53 @@ func (a *Adapter) rebuildIndex() error {
 	a.logger.Info("index rebuilt", "totalApps", appCount, "uniqueCharts", len(index))
 
 	return nil
+}
+
+// shouldSkipPath determines if a path should be skipped during scanning.
+func shouldSkipPath(info os.FileInfo) bool {
+	return (info.IsDir() && info.Name() == ".git") || info.IsDir()
+}
+
+// handleSkip returns the appropriate skip action for a path.
+func handleSkip(info os.FileInfo) error {
+	if info.IsDir() && info.Name() == ".git" {
+		return filepath.SkipDir
+	}
+	return nil
+}
+
+// isYAMLFile checks if a file has a YAML extension.
+func isYAMLFile(path string) bool {
+	ext := filepath.Ext(path)
+	return ext == ".yaml" || ext == ".yml"
+}
+
+// processApplicationFile attempts to parse and index an Argo Application manifest.
+// Returns the parsed app and whether it should be indexed.
+func (a *Adapter) processApplicationFile(path string) (*AppData, bool) {
+	// Try to parse as Argo Application
+	app, err := a.parseArgoApp(path)
+	if errors.Is(err, ErrNotAnApplication) {
+		// Not an Application manifest - skip silently
+		return nil, false
+	}
+	if err != nil {
+		// Invalid YAML or other error - log and skip
+		a.logger.Warn("failed to parse file as argo application", "path", path, "error", err)
+		return nil, false
+	}
+
+	// Extract chart name and environment from folder structure
+	chartName, env, err := a.extractFromFolderStructure(path)
+	if err != nil {
+		a.logger.Warn("failed to extract chart/env from path", "path", path, "error", err)
+		return nil, false
+	}
+
+	app.ChartName = chartName
+	app.Environment = env
+
+	return app, true
 }
 
 // parseArgoApp parses an Argo CD Application manifest from a file.
@@ -245,7 +274,7 @@ func (a *Adapter) parseArgoApp(path string) (*AppData, error) {
 
 	// Only process Argo Application resources
 	if manifest.Kind != "Application" {
-		return nil, fmt.Errorf("not an Application (kind: %s)", manifest.Kind)
+		return nil, ErrNotAnApplication
 	}
 
 	if manifest.Spec.Source.RepoURL == "" {
