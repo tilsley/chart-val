@@ -20,7 +20,6 @@ import (
 
 	"github.com/google/go-github/v68/github"
 
-	discoveredcharts "github.com/nathantilsley/chart-val/internal/diff/adapters/discovered_charts"
 	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
 	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
 	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
@@ -873,15 +872,12 @@ func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webh
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
-	// Chart config: use discovered charts adapter (backward compatible behavior)
-	discoveryConfig := discoveredcharts.New(envDiscovery, sourceCtrl)
-
 	// Create service (no Argo in E2E tests)
 	diffService := app.NewDiffService(
 		sourceCtrl,
 		changedCharts,
-		nil,
-		discoveryConfig,
+		nil,          // No Argo config in E2E
+		envDiscovery, // Use env discovery directly
 		helmRenderer,
 		reporter,
 		semanticDiff,

@@ -8,7 +8,6 @@ import (
 	gogithub "github.com/google/go-github/v68/github"
 
 	argoapps "github.com/nathantilsley/chart-val/internal/diff/adapters/argo_apps"
-	discoveredcharts "github.com/nathantilsley/chart-val/internal/diff/adapters/discovered_charts"
 	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
 	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
 	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
@@ -52,10 +51,6 @@ func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
-	// Chart config adapters
-	// Always create discovery adapter (used as fallback)
-	discoveryAdapter := discoveredcharts.New(envDiscovery, sourceCtrl)
-
 	// Optionally create Argo adapter (source of truth when available)
 	var argoAdapter ports.ChartConfigPort
 	if cfg.ArgoAppsRepo != "" {
@@ -76,15 +71,15 @@ func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
 		}
 		argoAdapter = adapter
 	} else {
-		log.Info("argo apps not configured, using discovery only")
+		log.Info("argo apps not configured, using env discovery only")
 	}
 
-	// Domain service (handles composite strategy: Argo → Discovery → Base chart)
+	// Domain service (handles composite strategy: Argo → Env Discovery → Base chart)
 	diffService := app.NewDiffService(
 		sourceCtrl,
 		changedCharts,
-		argoAdapter,      // nil if not configured
-		discoveryAdapter, // always present
+		argoAdapter,  // nil if not configured
+		envDiscovery, // always present - discovers from chart's env/ directory
 		helmRenderer,
 		reporter,
 		semanticDiff,
