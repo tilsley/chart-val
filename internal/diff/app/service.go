@@ -15,24 +15,24 @@ const noChangesMessage = "No changes detected."
 // DiffService implements ports.DiffUseCase by orchestrating the full
 // chart diff workflow: discover charts, fetch chart files, render, compute diffs, and report.
 type DiffService struct {
-	sourceControl   ports.SourceControlPort
-	changedCharts   ports.ChangedChartsPort
-	argoChartConfig ports.ChartConfigPort          // Optional: Argo CD apps (source of truth)
-	envDiscovery    ports.EnvironmentDiscoveryPort // Discovers environments from chart directory
-	renderer        ports.RendererPort
-	reporter        ports.ReportingPort
-	semanticDiff    ports.DiffPort // Semantic YAML diff (e.g., dyff)
-	unifiedDiff     ports.DiffPort // Line-based diff (e.g., go-difflib)
-	logger          *slog.Logger
+	sourceControl ports.SourceControlPort
+	changedCharts ports.ChangedChartsPort
+	argoEnvConfig ports.EnvironmentConfigPort // Optional: Argo CD apps (source of truth)
+	fsEnvConfig   ports.EnvironmentConfigPort // Fallback: discovers from chart's env/ folder
+	renderer      ports.RendererPort
+	reporter      ports.ReportingPort
+	semanticDiff  ports.DiffPort // Semantic YAML diff (e.g., dyff)
+	unifiedDiff   ports.DiffPort // Line-based diff (e.g., go-difflib)
+	logger        *slog.Logger
 }
 
 // NewDiffService creates a new DiffService wired with all driven ports.
-// argoConfig is optional (can be nil) - if provided, it's used as source of truth with env discovery as fallback.
+// argoEnvConfig is optional (can be nil) - if provided, it's used as source of truth with filesystem as fallback.
 func NewDiffService(
 	sc ports.SourceControlPort,
 	cc ports.ChangedChartsPort,
-	argoConfig ports.ChartConfigPort,
-	envDiscovery ports.EnvironmentDiscoveryPort,
+	argoEnvConfig ports.EnvironmentConfigPort,
+	fsEnvConfig ports.EnvironmentConfigPort,
 	rn ports.RendererPort,
 	rp ports.ReportingPort,
 	semanticDiff ports.DiffPort,
@@ -40,15 +40,15 @@ func NewDiffService(
 	logger *slog.Logger,
 ) *DiffService {
 	return &DiffService{
-		sourceControl:   sc,
-		changedCharts:   cc,
-		argoChartConfig: argoConfig,
-		envDiscovery:    envDiscovery,
-		renderer:        rn,
-		reporter:        rp,
-		semanticDiff:    semanticDiff,
-		unifiedDiff:     unifiedDiff,
-		logger:          logger,
+		sourceControl: sc,
+		changedCharts: cc,
+		argoEnvConfig: argoEnvConfig,
+		fsEnvConfig:   fsEnvConfig,
+		renderer:      rn,
+		reporter:      rp,
+		semanticDiff:  semanticDiff,
+		unifiedDiff:   unifiedDiff,
+		logger:        logger,
 	}
 }
 
@@ -110,7 +110,7 @@ func (s *DiffService) Execute(ctx context.Context, pr domain.PRContext) error {
 	return nil
 }
 
-// getChartConfig gets chart configuration using the composite strategy:
+// getChartConfig gets environment configuration using the composite strategy:
 // 1. Try Argo CD apps (source of truth for deployed charts)
 // 2. Fall back to discovering from chart's env/ directory (for new charts)
 // 3. If no environments found, treat as base chart (not deployed)
@@ -122,11 +122,11 @@ func (s *DiffService) getChartConfig(
 	chartPath := "charts/" + chartName
 
 	// Try Argo apps first (if configured)
-	if s.argoChartConfig != nil {
-		config, err := s.argoChartConfig.GetChartConfig(ctx, pr, chartName)
+	if s.argoEnvConfig != nil {
+		config, err := s.argoEnvConfig.GetEnvironmentConfig(ctx, pr, chartName)
 		if err == nil && len(config.Environments) > 0 {
 			s.logger.Info(
-				"using argo apps for chart config",
+				"using argo apps for environment config",
 				"chartName",
 				chartName,
 				"envCount",
@@ -137,27 +137,20 @@ func (s *DiffService) getChartConfig(
 	}
 
 	// Fall back to discovering from chart's env/ directory
-	s.logger.Info("no argo apps found, falling back to discovery", "chartName", chartName)
+	s.logger.Info("no argo apps found, falling back to filesystem discovery", "chartName", chartName)
 
-	// Fetch head chart directory to discover environments
-	headDir, cleanup, err := s.sourceControl.FetchChartFiles(ctx, pr.Owner, pr.Repo, pr.HeadRef, chartPath)
-	if err != nil {
-		return domain.ChartConfig{}, fmt.Errorf("fetching chart files for discovery: %w", err)
-	}
-	defer cleanup()
-
-	// Discover environments from the chart directory
-	envs, err := s.envDiscovery.DiscoverEnvironments(ctx, headDir)
+	config, err := s.fsEnvConfig.GetEnvironmentConfig(ctx, pr, chartName)
 	if err != nil {
 		return domain.ChartConfig{}, fmt.Errorf("discovering environments for %s: %w", chartName, err)
 	}
 
-	if len(envs) > 0 {
-		s.logger.Info("using discovered environments", "chartName", chartName, "envCount", len(envs))
-		return domain.ChartConfig{
-			Path:         chartPath,
-			Environments: envs,
-		}, nil
+	if len(config.Environments) > 0 {
+		s.logger.Info(
+			"using filesystem discovered environments",
+			"chartName", chartName,
+			"envCount", len(config.Environments),
+		)
+		return config, nil
 	}
 
 	// No environments found - treat as base chart (not deployed)

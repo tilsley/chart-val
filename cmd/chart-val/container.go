@@ -7,9 +7,9 @@ import (
 
 	gogithub "github.com/google/go-github/v68/github"
 
-	argoapps "github.com/nathantilsley/chart-val/internal/diff/adapters/argo_apps"
 	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
-	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
+	argoenv "github.com/nathantilsley/chart-val/internal/diff/adapters/environment_config/argo"
+	fsenv "github.com/nathantilsley/chart-val/internal/diff/adapters/environment_config/filesystem"
 	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
 	githubout "github.com/nathantilsley/chart-val/internal/diff/adapters/github_out"
 	helmcli "github.com/nathantilsley/chart-val/internal/diff/adapters/helm_cli"
@@ -40,7 +40,6 @@ func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
 	}
 
 	// Adapters
-	envDiscovery := envdiscovery.New()
 	sourceCtrl := sourcectrl.New(githubClient)
 	helmRenderer, err := helmcli.New()
 	if err != nil {
@@ -51,15 +50,19 @@ func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
+	// Environment config adapters (both discover where charts are deployed)
+	// Filesystem adapter - discovers from chart's env/ folder
+	filesystemEnvConfig := fsenv.New(sourceCtrl)
+
 	// Optionally create Argo adapter (source of truth when available)
-	var argoAdapter ports.ChartConfigPort
+	var argoEnvConfig ports.EnvironmentConfigPort
 	if cfg.ArgoAppsRepo != "" {
 		log.Info("argo apps integration enabled",
 			"repo", cfg.ArgoAppsRepo,
 			"syncInterval", cfg.ArgoAppsSyncInterval,
 			"folderPattern", cfg.ArgoAppsFolderPattern,
 		)
-		adapter, err := argoapps.New(
+		adapter, err := argoenv.New(
 			cfg.ArgoAppsRepo,
 			cfg.ArgoAppsLocalPath,
 			cfg.ArgoAppsSyncInterval,
@@ -67,19 +70,19 @@ func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
 			log,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("creating argo apps adapter: %w", err)
+			return nil, fmt.Errorf("creating argo environment config adapter: %w", err)
 		}
-		argoAdapter = adapter
+		argoEnvConfig = adapter
 	} else {
-		log.Info("argo apps not configured, using env discovery only")
+		log.Info("argo apps not configured, using filesystem discovery only")
 	}
 
-	// Domain service (handles composite strategy: Argo → Env Discovery → Base chart)
+	// Domain service (handles composite strategy: Argo → Filesystem → Base chart)
 	diffService := app.NewDiffService(
 		sourceCtrl,
 		changedCharts,
-		argoAdapter,  // nil if not configured
-		envDiscovery, // always present - discovers from chart's env/ directory
+		argoEnvConfig,       // nil if not configured
+		filesystemEnvConfig, // always present - discovers from chart's env/ folder
 		helmRenderer,
 		reporter,
 		semanticDiff,

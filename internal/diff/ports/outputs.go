@@ -11,12 +11,6 @@ type SourceControlPort interface {
 	FetchChartFiles(ctx context.Context, owner, repo, ref, chartPath string) (tmpDir string, cleanup func(), err error)
 }
 
-// EnvironmentDiscoveryPort abstracts discovering which environments exist for
-// a chart by inspecting its directory structure after files have been fetched.
-type EnvironmentDiscoveryPort interface {
-	DiscoverEnvironments(ctx context.Context, chartDir string) ([]domain.EnvironmentConfig, error)
-}
-
 // RendererPort abstracts Helm template rendering, separated from source control
 // so the rendering strategy is independently swappable.
 type RendererPort interface {
@@ -57,10 +51,11 @@ type DiffPort interface {
 	ComputeDiff(baseName, headName string, base, head []byte) string
 }
 
-// ChartConfigPort abstracts resolving environment configurations for a chart.
-// Different implementations can read from Argo CD Application manifests,
-// discover from directory structure, or other sources.
-type ChartConfigPort interface {
-	// GetChartConfig returns the chart config (path + environments) for a given chart name.
-	GetChartConfig(ctx context.Context, pr domain.PRContext, chartName string) (domain.ChartConfig, error)
+// EnvironmentConfigPort abstracts discovering where a chart is deployed.
+// Implementations discover environment configuration (which environments exist,
+// what value files to use) from different sources like Argo CD Applications
+// or the chart's env/ directory structure.
+type EnvironmentConfigPort interface {
+	// GetEnvironmentConfig returns deployment config (path + environments) for a given chart.
+	GetEnvironmentConfig(ctx context.Context, pr domain.PRContext, chartName string) (domain.ChartConfig, error)
 }

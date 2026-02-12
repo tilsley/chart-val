@@ -1,4 +1,4 @@
-package argoapps
+package argo
 
 import (
 	"context"
@@ -339,7 +339,7 @@ func TestRebuildIndex(t *testing.T) {
 	}
 }
 
-func TestGetChartConfig(t *testing.T) {
+func TestGetEnvironmentConfig(t *testing.T) {
 	t.Parallel()
 
 	adapter := &Adapter{
@@ -390,9 +390,9 @@ func TestGetChartConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			config, err := adapter.GetChartConfig(context.Background(), domain.PRContext{}, tt.chartName)
+			config, err := adapter.GetEnvironmentConfig(context.Background(), domain.PRContext{}, tt.chartName)
 			if err != nil {
-				t.Fatalf("GetChartConfig failed: %v", err)
+				t.Fatalf("GetEnvironmentConfig failed: %v", err)
 			}
 
 			if config.Path != tt.wantPath {

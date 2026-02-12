@@ -1,5 +1,5 @@
-// Package argoapps provides chart configuration by reading Argo CD Application manifests.
-package argoapps
+// Package argo discovers environment configuration by reading Argo CD Application manifests.
+package argo
 
 import (
 	"context"
@@ -21,7 +21,7 @@ import (
 // ErrNotAnApplication is returned when a manifest is not an Argo Application.
 var ErrNotAnApplication = errors.New("not an Application")
 
-// Adapter implements ports.ChartConfigPort by reading Argo CD Application
+// Adapter implements ports.EnvironmentConfigPort by reading Argo CD Application
 // manifests from a locally cloned Git repository. It scans the entire repo
 // for Application files and extracts environment names from directory paths.
 type Adapter struct {
@@ -300,10 +300,14 @@ func (a *Adapter) parseArgoApp(path string) (*AppData, error) {
 	}, nil
 }
 
-// GetChartConfig implements ports.ChartConfigPort.
+// GetEnvironmentConfig implements ports.EnvironmentConfigPort.
 // It looks up environments for the given chart name from Argo Application manifests.
-// If the chart is not found, returns default environments.
-func (a *Adapter) GetChartConfig(_ context.Context, _ domain.PRContext, chartName string) (domain.ChartConfig, error) {
+// If the chart is not found, returns empty environments (fallback will be used).
+func (a *Adapter) GetEnvironmentConfig(
+	_ context.Context,
+	_ domain.PRContext,
+	chartName string,
+) (domain.ChartConfig, error) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 

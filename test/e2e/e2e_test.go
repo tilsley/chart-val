@@ -21,7 +21,7 @@ import (
 	"github.com/google/go-github/v68/github"
 
 	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
-	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
+	fsenv "github.com/nathantilsley/chart-val/internal/diff/adapters/environment_config/filesystem"
 	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
 	githubout "github.com/nathantilsley/chart-val/internal/diff/adapters/github_out"
 	helmcli "github.com/nathantilsley/chart-val/internal/diff/adapters/helm_cli"
@@ -861,7 +861,6 @@ func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webh
 	}
 
 	// Set up adapters
-	envDiscovery := envdiscovery.New()
 	sourceCtrl := sourcectrl.New(githubClient)
 	helmRenderer, err := helmcli.New()
 	if err != nil {
@@ -872,12 +871,15 @@ func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webh
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
+	// Environment config: filesystem discovery
+	filesystemEnvConfig := fsenv.New(sourceCtrl)
+
 	// Create service (no Argo in E2E tests)
 	diffService := app.NewDiffService(
 		sourceCtrl,
 		changedCharts,
-		nil,          // No Argo config in E2E
-		envDiscovery, // Use env discovery directly
+		nil,                 // No Argo config in E2E
+		filesystemEnvConfig, // Use filesystem discovery
 		helmRenderer,
 		reporter,
 		semanticDiff,

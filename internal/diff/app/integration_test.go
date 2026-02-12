@@ -7,10 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
-	envdiscovery "github.com/nathantilsley/chart-val/internal/diff/adapters/env_discovery"
 	githubout "github.com/nathantilsley/chart-val/internal/diff/adapters/github_out"
 	helmcli "github.com/nathantilsley/chart-val/internal/diff/adapters/helm_cli"
 	linediff "github.com/nathantilsley/chart-val/internal/diff/adapters/line_diff"
@@ -43,8 +44,7 @@ func TestIntegration_FullDiffFlow(t *testing.T) {
 	headRef := "feat/update-config"
 
 	// Discover environments from head chart dir
-	discovery := envdiscovery.New()
-	envs, err := discovery.DiscoverEnvironments(ctx, headChartDir)
+	envs, err := discoverEnvironmentsFromDir(headChartDir)
 	if err != nil {
 		t.Fatalf("discovering environments: %v", err)
 	}
@@ -141,8 +141,7 @@ func TestIntegration_NewChart(t *testing.T) {
 	}
 
 	// Discover environments from head chart dir
-	discovery := envdiscovery.New()
-	envs, err := discovery.DiscoverEnvironments(ctx, headChartDir)
+	envs, err := discoverEnvironmentsFromDir(headChartDir)
 	if err != nil {
 		t.Fatalf("discovering environments: %v", err)
 	}
@@ -244,7 +243,6 @@ func TestIntegration_ThreeChartsOneChanged(t *testing.T) {
 		{"another-app", false},
 	}
 
-	discovery := envdiscovery.New()
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
@@ -255,7 +253,7 @@ func TestIntegration_ThreeChartsOneChanged(t *testing.T) {
 		baseChartDir := filepath.Join(testdataDir, "base", chart.name)
 		headChartDir := filepath.Join(testdataDir, "head", chart.name)
 
-		envs, err := discovery.DiscoverEnvironments(ctx, headChartDir)
+		envs, err := discoverEnvironmentsFromDir(headChartDir)
 		if err != nil {
 			t.Fatalf("discovering environments for %s: %v", chart.name, err)
 		}
@@ -352,4 +350,37 @@ func compareOrUpdateGolden(t *testing.T, path, actual string) {
 		t.Errorf("output does not match golden file %s\n\n--- expected ---\n%s\n--- actual ---\n%s",
 			path, string(expected), actual)
 	}
+}
+
+// discoverEnvironmentsFromDir scans chartDir/env/ for files matching *-values.yaml.
+// This is a test helper that mirrors the filesystem adapter's discovery logic.
+func discoverEnvironmentsFromDir(chartDir string) ([]domain.EnvironmentConfig, error) {
+	envDir := filepath.Join(chartDir, "env")
+
+	entries, err := os.ReadDir(envDir)
+	if err != nil {
+		return nil, fmt.Errorf("reading env directory: %w", err)
+	}
+
+	var configs []domain.EnvironmentConfig
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, "-values.yaml") {
+			continue
+		}
+		envName := strings.TrimSuffix(name, "-values.yaml")
+		configs = append(configs, domain.EnvironmentConfig{
+			Name:       envName,
+			ValueFiles: []string{filepath.Join("env", name)},
+		})
+	}
+
+	sort.Slice(configs, func(i, j int) bool {
+		return configs[i].Name < configs[j].Name
+	})
+
+	return configs, nil
 }

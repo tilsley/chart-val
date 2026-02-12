@@ -33,21 +33,22 @@ func (m *mockChangedCharts) GetChangedCharts(_ context.Context, _ domain.PRConte
 	return m.charts, nil
 }
 
-type mockEnvDiscovery struct {
-	envs           []domain.EnvironmentConfig            // default envs
-	envsByChartDir map[string][]domain.EnvironmentConfig // envs per chart dir
+type mockEnvConfig struct {
+	config  domain.ChartConfig            // default config
+	configs map[string]domain.ChartConfig // per-chart configs
 }
 
-func (m *mockEnvDiscovery) DiscoverEnvironments(
+func (m *mockEnvConfig) GetEnvironmentConfig(
 	_ context.Context,
-	chartDir string,
-) ([]domain.EnvironmentConfig, error) {
-	if m.envsByChartDir != nil {
-		if envs, ok := m.envsByChartDir[chartDir]; ok {
-			return envs, nil
+	_ domain.PRContext,
+	chartName string,
+) (domain.ChartConfig, error) {
+	if m.configs != nil {
+		if cfg, ok := m.configs[chartName]; ok {
+			return cfg, nil
 		}
 	}
-	return m.envs, nil
+	return m.config, nil
 }
 
 type mockRenderer struct {
@@ -101,14 +102,14 @@ func (m *mockDiff) ComputeDiff(baseName, headName string, base, head []byte) str
 func TestService_NoChartChanges(t *testing.T) {
 	srcCtrl := &mockSourceControl{charts: map[string]bool{}}
 	changedCharts := &mockChangedCharts{charts: nil}
-	envDiscovery := &mockEnvDiscovery{}
+	envConfig := &mockEnvConfig{}
 	renderer := &mockRenderer{}
 	reporter := &mockReporter{}
 	semanticDiff := &mockDiff{}
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envDiscovery, renderer, reporter, semanticDiff, unifiedDiff, log)
+	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -147,9 +148,10 @@ func TestService_NewChartNotInBase(t *testing.T) {
 			{Name: "new-chart", Path: "charts/new-chart"},
 		},
 	}
-	envDiscovery := &mockEnvDiscovery{
-		envsByChartDir: map[string][]domain.EnvironmentConfig{
-			"feat/add-chart:charts/new-chart": {
+	envConfig := &mockEnvConfig{
+		config: domain.ChartConfig{
+			Path: "charts/new-chart",
+			Environments: []domain.EnvironmentConfig{
 				{Name: "prod", ValueFiles: []string{"env/prod-values.yaml"}},
 			},
 		},
@@ -160,7 +162,7 @@ func TestService_NewChartNotInBase(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envDiscovery, renderer, reporter, semanticDiff, unifiedDiff, log)
+	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -219,11 +221,11 @@ func TestService_ThreeChartsOneChanged(t *testing.T) {
 		},
 	}
 	envs := []domain.EnvironmentConfig{{Name: "prod", ValueFiles: []string{"env/prod-values.yaml"}}}
-	envDiscovery := &mockEnvDiscovery{
-		envsByChartDir: map[string][]domain.EnvironmentConfig{
-			"feat/update:charts/app-a": envs,
-			"feat/update:charts/app-b": envs,
-			"feat/update:charts/app-c": envs,
+	envConfig := &mockEnvConfig{
+		configs: map[string]domain.ChartConfig{
+			"app-a": {Path: "charts/app-a", Environments: envs},
+			"app-b": {Path: "charts/app-b", Environments: envs},
+			"app-c": {Path: "charts/app-c", Environments: envs},
 		},
 	}
 	// app-a: different manifests between base and head (has changes)
@@ -240,7 +242,7 @@ func TestService_ThreeChartsOneChanged(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envDiscovery, renderer, reporter, semanticDiff, unifiedDiff, log)
+	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
