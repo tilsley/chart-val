@@ -1,0 +1,9 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  source:
+    repoURL: https://github.com/example/charts
+    path: charts/my-app
+    helm:
+      valueFiles:
+        - values-prod.yaml

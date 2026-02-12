@@ -20,24 +20,15 @@ func TestParseArgoApp(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		content     string
+		fixture     string // Path relative to testdata/
 		wantApp     *AppData
 		wantErr     bool
 		wantNil     bool
 		errContains string
 	}{
 		{
-			name: "valid application with path",
-			content: `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/my-app
-    helm:
-      valueFiles:
-        - values-prod.yaml
-`,
+			name:    "valid application with path",
+			fixture: "applications/valid-app-path.yaml",
 			wantApp: &AppData{
 				ChartPath:  "charts/my-app",
 				ValueFiles: []string{"values-prod.yaml"},
@@ -46,17 +37,8 @@ spec:
 			wantErr: false,
 		},
 		{
-			name: "valid application with OCI chart",
-			content: `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: oci://registry.example.com
-    chart: my-app
-    helm:
-      valueFiles:
-        - values.yaml
-`,
+			name:    "valid application with OCI chart",
+			fixture: "applications/valid-app-oci.yaml",
 			wantApp: &AppData{
 				ChartPath:  "my-app",
 				ValueFiles: []string{"values.yaml"},
@@ -65,71 +47,40 @@ spec:
 			wantErr: false,
 		},
 		{
-			name: "non-application manifest",
-			content: `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: my-config
-data:
-  key: value
-`,
+			name:        "non-application manifest",
+			fixture:     "non-applications/configmap.yaml",
 			wantNil:     true,
 			wantErr:     true,
 			errContains: "not an Application",
 		},
 		{
-			name: "deployment manifest",
-			content: `apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-deployment
-spec:
-  replicas: 3
-`,
+			name:        "deployment manifest",
+			fixture:     "non-applications/deployment.yaml",
 			wantNil:     true,
 			wantErr:     true,
 			errContains: "not an Application",
 		},
 		{
-			name: "invalid yaml",
-			content: `this is not: valid: yaml:
-  - broken
-    - indentation
-`,
+			name:        "invalid yaml",
+			fixture:     "invalid/invalid.yaml",
 			wantErr:     true,
 			errContains: "yaml",
 		},
 		{
-			name: "missing repoURL",
-			content: `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    path: charts/my-app
-`,
+			name:        "missing repoURL",
+			fixture:     "invalid/missing-repo-url.yaml",
 			wantErr:     true,
 			errContains: "repoURL",
 		},
 		{
-			name: "missing both chart and path",
-			content: `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-`,
+			name:        "missing both chart and path",
+			fixture:     "invalid/missing-chart-and-path.yaml",
 			wantErr:     true,
 			errContains: "chart and",
 		},
 		{
-			name: "application without valueFiles",
-			content: `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/simple-app
-`,
+			name:    "application without valueFiles",
+			fixture: "applications/app-no-valuefiles.yaml",
 			wantApp: &AppData{
 				ChartPath:  "charts/simple-app",
 				ValueFiles: nil,
@@ -143,13 +94,8 @@ spec:
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// Write test content to temp file
-			tmpFile := filepath.Join(t.TempDir(), "test.yaml")
-			if err := os.WriteFile(tmpFile, []byte(tt.content), 0o600); err != nil {
-				t.Fatalf("failed to write test file: %v", err)
-			}
-
-			app, err := adapter.parseArgoApp(tmpFile)
+			fixturePath := filepath.Join("testdata", tt.fixture)
+			app, err := adapter.parseArgoApp(fixturePath)
 
 			if tt.wantErr {
 				if err == nil {
@@ -277,41 +223,20 @@ func TestRebuildIndex_ContinuesOnErrors(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	// Create test directory with some valid apps and an inaccessible file
-	testFiles := map[string]string{
-		"my-app/prod/app.yaml": `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/my-app
-`,
-		"broken/invalid.yaml": "this will be made inaccessible",
-		"other-app/dev/app.yaml": `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/other-app
-`,
+	// Copy testdata files and add an inaccessible one
+	testdataPath := filepath.Join("testdata", "repos", "multi-env")
+	if err := copyDir(testdataPath, tmpDir); err != nil {
+		t.Fatalf("failed to copy testdata: %v", err)
 	}
 
-	for path, content := range testFiles {
-		fullPath := filepath.Join(tmpDir, path)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
-			t.Fatalf("failed to create directory: %v", err)
-		}
-		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
-			t.Fatalf("failed to write test file %s: %v", path, err)
-		}
+	// Create an inaccessible file
+	brokenPath := filepath.Join(tmpDir, "broken", "invalid.yaml")
+	if err := os.MkdirAll(filepath.Dir(brokenPath), 0o755); err != nil {
+		t.Fatalf("failed to create broken dir: %v", err)
 	}
-
-	// Make the broken file inaccessible by removing all permissions
-	brokenPath := filepath.Join(tmpDir, "broken/invalid.yaml")
-	if err := os.Chmod(brokenPath, 0o000); err != nil {
-		t.Fatalf("failed to chmod test file: %v", err)
+	if err := os.WriteFile(brokenPath, []byte("content"), 0o000); err != nil {
+		t.Fatalf("failed to create inaccessible file: %v", err)
 	}
-	// Restore permissions for cleanup
 	defer func() {
 		_ = os.Chmod(brokenPath, 0o600)
 	}()
@@ -346,59 +271,19 @@ func TestRebuildIndex(t *testing.T) {
 
 	tmpDir := t.TempDir()
 
-	// Create test directory structure
-	// my-app/prod/app.yaml - valid Application
-	// my-app/dev/app.yaml - valid Application
-	// other-app/staging/app.yaml - valid Application
-	// config/configmap.yaml - ConfigMap (not an Application)
-	// random.txt - non-YAML file
-	// .git/config - should be skipped
-
-	testFiles := map[string]string{
-		"my-app/prod/app.yaml": `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/my-app
-    helm:
-      valueFiles:
-        - values-prod.yaml
-`,
-		"my-app/dev/app.yaml": `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/my-app
-    helm:
-      valueFiles:
-        - values-dev.yaml
-`,
-		"other-app/staging/app.yaml": `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/other-app
-`,
-		"config/configmap.yaml": `apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: my-config
-`,
-		"random.txt":  "not yaml content",
-		".git/config": "[core]\nrepositoryformatversion = 0",
+	// Copy entire multi-env testdata repo structure
+	testdataPath := filepath.Join("testdata", "repos", "multi-env")
+	if err := copyDir(testdataPath, tmpDir); err != nil {
+		t.Fatalf("failed to copy testdata: %v", err)
 	}
 
-	for path, content := range testFiles {
-		fullPath := filepath.Join(tmpDir, path)
-		if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
-			t.Fatalf("failed to create directory: %v", err)
-		}
-		if err := os.WriteFile(fullPath, []byte(content), 0o600); err != nil {
-			t.Fatalf("failed to write test file %s: %v", path, err)
-		}
+	// Create .git directory to test skipping
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
+		t.Fatalf("failed to create .git dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte("[core]\n"), 0o600); err != nil {
+		t.Fatalf("failed to create .git/config: %v", err)
 	}
 
 	adapter := &Adapter{
@@ -543,21 +428,10 @@ func TestNew(t *testing.T) {
 	tmpDir := t.TempDir()
 	repoDir := filepath.Join(tmpDir, "test-repo")
 
-	// Create a minimal git repo with an Application manifest
-	if err := os.MkdirAll(filepath.Join(repoDir, "my-app", "prod"), 0o755); err != nil {
-		t.Fatalf("failed to create test directories: %v", err)
-	}
-
-	appManifest := `apiVersion: argoproj.io/v1alpha1
-kind: Application
-spec:
-  source:
-    repoURL: https://github.com/example/charts
-    path: charts/my-app
-`
-	appPath := filepath.Join(repoDir, "my-app", "prod", "app.yaml")
-	if err := os.WriteFile(appPath, []byte(appManifest), 0o600); err != nil {
-		t.Fatalf("failed to write test app: %v", err)
+	// Copy testdata to create a git repo
+	testdataPath := filepath.Join("testdata", "repos", "single-env")
+	if err := copyDir(testdataPath, repoDir); err != nil {
+		t.Fatalf("failed to copy testdata: %v", err)
 	}
 
 	// Initialize git repo
@@ -570,9 +444,9 @@ spec:
 	}
 
 	for _, cmd := range cmds {
-		exec := execCommand(cmd[0], cmd[1:]...)
-		exec.Dir = repoDir
-		if output, err := exec.CombinedOutput(); err != nil {
+		execCmd := execCommand(cmd[0], cmd[1:]...)
+		execCmd.Dir = repoDir
+		if output, err := execCmd.CombinedOutput(); err != nil {
 			t.Fatalf("git command %v failed: %v\noutput: %s", cmd, err, output)
 		}
 	}
@@ -628,6 +502,34 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// copyDir recursively copies a directory tree.
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Get the relative path from src
+		relPath, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+
+		targetPath := filepath.Join(dst, relPath)
+
+		if info.IsDir() {
+			return os.MkdirAll(targetPath, 0o755)
+		}
+
+		// Copy file
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(targetPath, data, 0o600)
+	})
 }
 
 var execCommand = exec.Command // For potential test mocking

@@ -1,0 +1,9 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+spec:
+  source:
+    repoURL: oci://registry.example.com
+    chart: my-app
+    helm:
+      valueFiles:
+        - values.yaml
