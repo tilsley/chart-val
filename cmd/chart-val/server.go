@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"log/slog"
+
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 // Server wraps the HTTP server and its lifecycle.
@@ -22,8 +24,8 @@ type Server struct {
 func NewServer(container *Container) *Server {
 	mux := http.NewServeMux()
 
-	// Routes
-	mux.Handle("POST /webhook", container.WebhookHandler)
+	// Routes (otelhttp creates an inbound span for each webhook request)
+	mux.Handle("POST /webhook", otelhttp.NewHandler(container.WebhookHandler, "POST /webhook"))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		//nolint:errcheck // Health check response, error not actionable

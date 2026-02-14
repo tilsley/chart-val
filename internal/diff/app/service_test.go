@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	noopmetric "go.opentelemetry.io/otel/metric/noop"
+	nooptrace "go.opentelemetry.io/otel/trace/noop"
+
 	"github.com/nathantilsley/chart-val/internal/diff/domain"
 	"github.com/nathantilsley/chart-val/internal/platform/logger"
 )
@@ -109,7 +112,8 @@ func TestService_NoChartChanges(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
+	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log,
+		noopmetric.NewMeterProvider().Meter("test"), nooptrace.NewTracerProvider().Tracer("test"))
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -162,7 +166,8 @@ func TestService_NewChartNotInBase(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
+	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log,
+		noopmetric.NewMeterProvider().Meter("test"), nooptrace.NewTracerProvider().Tracer("test"))
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -242,7 +247,8 @@ func TestService_ThreeChartsOneChanged(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log)
+	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log,
+		noopmetric.NewMeterProvider().Meter("test"), nooptrace.NewTracerProvider().Tracer("test"))
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",

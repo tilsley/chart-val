@@ -1,0 +1,9 @@
+services:
+  # Grafana LGTM stack: OTel Collector + Prometheus + Tempo + Grafana in one container.
+  # Accepts OTLP gRPC on :4317, view traces and metrics in Grafana at :3000.
+  otel:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000" # Grafana UI (admin/admin)
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP

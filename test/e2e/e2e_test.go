@@ -20,6 +20,11 @@ import (
 
 	"github.com/google/go-github/v68/github"
 
+	noopmetric "go.opentelemetry.io/otel/metric/noop"
+	nooptrace "go.opentelemetry.io/otel/trace/noop"
+
+	"github.com/nathantilsley/chart-val/internal/platform/telemetry"
+
 	dyffdiff "github.com/nathantilsley/chart-val/internal/diff/adapters/dyff_diff"
 	fsenv "github.com/nathantilsley/chart-val/internal/diff/adapters/environment_config/filesystem"
 	githubin "github.com/nathantilsley/chart-val/internal/diff/adapters/github_in"
@@ -874,6 +879,28 @@ func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webh
 	// Environment config: filesystem discovery
 	filesystemEnvConfig := fsenv.New(sourceCtrl)
 
+	// Use real OTel when OTEL_ENABLED=true (e.g., with local Jaeger),
+	// otherwise noop for zero overhead in normal test runs.
+	meter := noopmetric.NewMeterProvider().Meter("test")
+	tracer := nooptrace.NewTracerProvider().Tracer("test")
+	if os.Getenv("OTEL_ENABLED") == "true" {
+		ctx := context.Background()
+		tel, err := telemetry.New(ctx, true)
+		if err != nil {
+			t.Fatalf("initializing telemetry: %v", err)
+		}
+		t.Cleanup(func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := tel.Shutdown(shutdownCtx); err != nil {
+				t.Logf("telemetry shutdown: %v", err)
+			}
+		})
+		meter = tel.Meter
+		tracer = tel.Tracer
+		t.Logf("OTel enabled — traces will be exported to OTLP endpoint")
+	}
+
 	// Create service (no Argo in E2E tests)
 	diffService := app.NewDiffService(
 		sourceCtrl,
@@ -885,6 +912,8 @@ func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webh
 		semanticDiff,
 		unifiedDiff,
 		log,
+		meter,
+		tracer,
 	)
 
 	// Create webhook handler

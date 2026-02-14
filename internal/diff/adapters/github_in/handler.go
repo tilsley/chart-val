@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	gogithub "github.com/google/go-github/v68/github"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/nathantilsley/chart-val/internal/diff/domain"
 	"github.com/nathantilsley/chart-val/internal/diff/ports"
@@ -74,9 +75,14 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	)
 
 	// Dispatch asynchronously — GitHub has a 10s webhook timeout.
-	// Use a detached context since r.Context() is cancelled after the response.
+	// Embed the inbound request's span context as the remote parent so all
+	// async spans share the same trace ID (single trace in Grafana/Jaeger).
+	// Only the Go context is detached (avoiding cancellation); the trace continues.
+	ctx := trace.ContextWithRemoteSpanContext(context.Background(),
+		trace.SpanContextFromContext(r.Context()),
+	)
 	go func() { //nolint:contextcheck // Intentionally using detached context for async background job
-		if err := h.useCase.Execute(context.Background(), pr); err != nil {
+		if err := h.useCase.Execute(ctx, pr); err != nil {
 			h.logger.Error("diff execution failed",
 				"owner", pr.Owner,
 				"repo", pr.Repo,

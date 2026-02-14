@@ -23,6 +23,9 @@ type Config struct {
 	ArgoAppsLocalPath     string        // Local path for clone (e.g., "/tmp/chart-val-argocd")
 	ArgoAppsSyncInterval  time.Duration // How often to sync repo (e.g., 1h)
 	ArgoAppsFolderPattern string        // Folder structure pattern (e.g., "apps/{chartName}/{envName}")
+
+	// OpenTelemetry (optional)
+	OTelEnabled bool // OTEL_ENABLED feature flag
 }
 
 // Load reads configuration from environment variables, validates required
@@ -40,6 +43,8 @@ func Load() (Config, error) {
 	if err := loadArgoConfig(&cfg); err != nil {
 		return Config{}, err
 	}
+
+	loadOTelConfig(&cfg)
 
 	return cfg, nil
 }
@@ -116,6 +121,10 @@ func getEnvOrDefault(envKey, defaultValue string) string {
 		return v
 	}
 	return defaultValue
+}
+
+func loadOTelConfig(cfg *Config) {
+	cfg.OTelEnabled = os.Getenv("OTEL_ENABLED") == "true"
 }
 
 func parseDurationOrDefault(envKey string, defaultValue time.Duration) (time.Duration, error) {

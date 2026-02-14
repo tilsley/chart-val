@@ -20,6 +20,7 @@ import (
 	"github.com/nathantilsley/chart-val/internal/diff/ports"
 	"github.com/nathantilsley/chart-val/internal/platform/config"
 	ghclient "github.com/nathantilsley/chart-val/internal/platform/github"
+	"github.com/nathantilsley/chart-val/internal/platform/telemetry"
 )
 
 // Container holds all application dependencies.
@@ -32,7 +33,7 @@ type Container struct {
 }
 
 // NewContainer builds and wires all dependencies.
-func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
+func NewContainer(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry) (*Container, error) {
 	// Platform dependencies
 	githubClient, err := ghclient.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubPrivateKey)
 	if err != nil {
@@ -88,6 +89,8 @@ func NewContainer(cfg config.Config, log *slog.Logger) (*Container, error) {
 		semanticDiff,
 		unifiedDiff,
 		log,
+		tel.Meter,
+		tel.Tracer,
 	)
 
 	// Webhook handler
