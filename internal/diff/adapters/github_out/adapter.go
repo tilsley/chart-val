@@ -19,12 +19,14 @@ const maxCheckRunTextLen = 65535
 // Adapter implements ports.ReportingPort by posting results via the
 // GitHub Checks API.
 type Adapter struct {
-	client *gogithub.Client
+	client  *gogithub.Client
+	appName string
+	appURL  string
 }
 
 // New creates a new GitHub reporting adapter.
-func New(client *gogithub.Client) *Adapter {
-	return &Adapter{client: client}
+func New(client *gogithub.Client, appName, appURL string) *Adapter {
+	return &Adapter{client: client, appName: appName, appURL: appURL}
 }
 
 // CreateInProgressCheck creates a single check run in "in_progress" status for the PR.
@@ -35,7 +37,7 @@ func (a *Adapter) CreateInProgressCheck(ctx context.Context, pr domain.PRContext
 	client := a.client
 
 	checkRun, _, err := client.Checks.CreateCheckRun(ctx, pr.Owner, pr.Repo, gogithub.CreateCheckRunOptions{
-		Name:    "chart-val",
+		Name:    a.appName,
 		HeadSHA: pr.HeadSHA,
 		Status:  gogithub.Ptr("in_progress"),
 		Output: &gogithub.CheckRunOutput{
@@ -69,7 +71,7 @@ func (a *Adapter) UpdateCheckWithResults(
 	conclusion, summary, text := formatCheckRun(results)
 
 	_, _, err := client.Checks.UpdateCheckRun(ctx, pr.Owner, pr.Repo, checkRunID, gogithub.UpdateCheckRunOptions{
-		Name:       "chart-val",
+		Name:       a.appName,
 		Status:     gogithub.Ptr("completed"),
 		Conclusion: gogithub.Ptr(conclusion),
 		Output: &gogithub.CheckRunOutput{
@@ -98,12 +100,12 @@ func (a *Adapter) PostComment(ctx context.Context, pr domain.PRContext, results 
 	logger.Info("posting PR comment", "chart", chartName, "pr", pr.PRNumber)
 
 	client := a.client
-	commentMarker := fmt.Sprintf("<!-- chart-val: %s -->", chartName)
+	commentMarker := fmt.Sprintf("<!-- %s: %s -->", a.appName, chartName)
 
 	// Delete old comments for this chart to avoid bloat
 	a.deleteMatchingComments(ctx, pr, commentMarker)
 
-	commentBody := FormatPRComment(results)
+	commentBody := a.FormatPRComment(results)
 
 	_, _, err := client.Issues.CreateComment(ctx, pr.Owner, pr.Repo, pr.PRNumber, &gogithub.IssueComment{
 		Body: gogithub.Ptr(commentBody),
@@ -145,7 +147,7 @@ func (a *Adapter) deleteMatchingComments(ctx context.Context, pr domain.PRContex
 
 // FormatCheckRunMarkdown formats a complete check run markdown document for testing.
 // This includes the metadata header that GitHub displays.
-func FormatCheckRunMarkdown(results []domain.DiffResult) string {
+func (a *Adapter) FormatCheckRunMarkdown(results []domain.DiffResult) string {
 	if len(results) == 0 {
 		return ""
 	}
@@ -153,7 +155,7 @@ func FormatCheckRunMarkdown(results []domain.DiffResult) string {
 	conclusion, summary, text := formatCheckRun(results)
 
 	var sb strings.Builder
-	sb.WriteString("# chart-val\n\n")
+	fmt.Fprintf(&sb, "# %s\n\n", a.appName)
 	sb.WriteString("**Status:** completed\n")
 	fmt.Fprintf(&sb, "**Conclusion:** %s\n\n", conclusion)
 	sb.WriteString("## Helm Diff\n\n")
@@ -302,7 +304,7 @@ func chartHasChanges(results []domain.DiffResult) bool {
 
 // FormatPRComment formats a PR comment body for a single chart's diff results.
 // Exported for use in integration tests.
-func FormatPRComment(results []domain.DiffResult) string {
+func (a *Adapter) FormatPRComment(results []domain.DiffResult) string {
 	if len(results) == 0 {
 		return ""
 	}
@@ -311,7 +313,7 @@ func FormatPRComment(results []domain.DiffResult) string {
 	var sb strings.Builder
 
 	// Hidden marker for identifying this comment (for deletion on updates)
-	fmt.Fprintf(&sb, "<!-- chart-val: %s -->\n", chartName)
+	fmt.Fprintf(&sb, "<!-- %s: %s -->\n", a.appName, chartName)
 
 	// Header
 	fmt.Fprintf(&sb, "## 📊 Helm Diff Report: `%s`\n\n", chartName)
@@ -362,9 +364,11 @@ func FormatPRComment(results []domain.DiffResult) string {
 	}
 
 	sb.WriteString("---\n")
-	sb.WriteString(
-		"_Posted by [chart-val](https://github.com/nathantilsley/chart-val) — Your charts, validated before they deploy._\n",
-	)
+	if a.appURL != "" {
+		fmt.Fprintf(&sb, "_Posted by [%s](%s)_\n", a.appName, a.appURL)
+	} else {
+		fmt.Fprintf(&sb, "_Posted by %s_\n", a.appName)
+	}
 
 	return sb.String()
 }

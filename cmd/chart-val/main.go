@@ -28,6 +28,11 @@ func run() error {
 	// Initialize logger
 	log := logger.New(cfg.LogLevel)
 
+	// Default OTEL_SERVICE_NAME to AppName so the SDK picks it up.
+	if os.Getenv("OTEL_SERVICE_NAME") == "" {
+		os.Setenv("OTEL_SERVICE_NAME", cfg.AppName)
+	}
+
 	// Initialize telemetry (noop when disabled)
 	ctx := context.Background()
 	tel, err := telemetry.New(ctx, cfg.OTelEnabled)

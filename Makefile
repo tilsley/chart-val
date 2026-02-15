@@ -1,4 +1,4 @@
-.PHONY: help build build-cli run test test-verbose test-integration test-integration-update test-e2e test-e2e-local clean fmt vet lint lint-go lint-arch coverage
+.PHONY: help build build-cli run test test-verbose test-integration test-integration-update test-e2e test-e2e-local clean fmt vet lint lint-go lint-fix lint-arch coverage
 
 # Variables
 BINARY_NAME=chart-val
@@ -36,10 +36,11 @@ help:
 	@echo "  make test-e2e-local     - Run E2E tests using Makefile config (just needs GITHUB_TOKEN)"
 	@echo ""
 	@echo "Code Quality:"
-	@echo "  make fmt                - Format code with gofmt"
+	@echo "  make fmt                - Auto-format code (gofmt, goimports, golines via golangci-lint)"
 	@echo "  make vet                - Run go vet"
 	@echo "  make lint               - Run all linters (fmt, vet, golangci-lint, go-arch-lint)"
 	@echo "  make lint-go            - Run golangci-lint only"
+	@echo "  make lint-fix           - Run golangci-lint with auto-fix (formatters + linter fixes)"
 	@echo "  make lint-arch          - Run go-arch-lint (architecture validation)"
 	@echo "  make coverage           - Run tests with coverage report"
 	@echo ""
@@ -156,7 +157,10 @@ test-e2e-local:
 	fi
 
 fmt:
-	gofmt -w -s ./cmd ./internal
+	@echo "Formatting code (gofmt, goimports, golines)..."
+	@which golangci-lint > /dev/null || (echo "Error: golangci-lint not installed. Install with: brew install golangci-lint"; exit 1)
+	golangci-lint fmt ./...
+	@echo "✓ Code formatted"
 
 vet:
 	go vet ./...
@@ -167,6 +171,12 @@ lint-go:
 	golangci-lint run ./...
 	@echo "✓ golangci-lint passed"
 
+lint-fix:
+	@echo "Running golangci-lint with auto-fix..."
+	@which golangci-lint > /dev/null || (echo "Error: golangci-lint not installed. Install with: brew install golangci-lint"; exit 1)
+	golangci-lint run --fix ./...
+	@echo "✓ Auto-fix complete"
+
 lint-arch:
 	@echo "Running go-arch-lint (hexagonal architecture validation)..."
 	@which go-arch-lint > /dev/null || (echo "Error: go-arch-lint not installed. Install with: go install github.com/fe3dback/go-arch-lint@latest"; exit 1)
@@ -175,10 +185,6 @@ lint-arch:
 
 lint:
 	@echo "Running all linters..."
-	@echo ""
-	@echo "==> Checking formatting..."
-	@! gofmt -l -s ./cmd ./internal | grep -q . || (echo "Code needs formatting. Run: make fmt"; exit 1)
-	@echo "✓ Format check passed"
 	@echo ""
 	@echo "==> Running go vet..."
 	@go vet ./...

@@ -107,4 +107,4 @@ spec.template.spec.containers.my-app.env  (apps/v1/Deployment/my-app)
 </details>
 
 ---
-_Posted by [chart-val](https://github.com/nathantilsley/chart-val) — Your charts, validated before they deploy._
+_Posted by chart-val_

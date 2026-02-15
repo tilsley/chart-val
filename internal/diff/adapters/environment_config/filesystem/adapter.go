@@ -16,13 +16,19 @@ import (
 // Adapter implements ports.EnvironmentConfigPort by scanning the chart's
 // env/ subdirectory for *-values.yaml files.
 type Adapter struct {
-	sourceControl ports.SourceControlPort
+	sourceControl    ports.SourceControlPort
+	chartDir         string
+	envDir           string
+	valuesFileSuffix string
 }
 
 // New creates a new filesystem environment config adapter.
-func New(sourceControl ports.SourceControlPort) *Adapter {
+func New(sourceControl ports.SourceControlPort, chartDir, envDir, valuesFileSuffix string) *Adapter {
 	return &Adapter{
-		sourceControl: sourceControl,
+		sourceControl:    sourceControl,
+		chartDir:         chartDir,
+		envDir:           envDir,
+		valuesFileSuffix: valuesFileSuffix,
 	}
 }
 
@@ -33,7 +39,7 @@ func (a *Adapter) GetEnvironmentConfig(
 	pr domain.PRContext,
 	chartName string,
 ) (domain.ChartConfig, error) {
-	chartPath := "charts/" + chartName
+	chartPath := a.chartDir + "/" + chartName
 
 	// Fetch chart directory to discover environments
 	chartDir, cleanup, err := a.sourceControl.FetchChartFiles(ctx, pr.Owner, pr.Repo, pr.HeadRef, chartPath)
@@ -54,7 +60,7 @@ func (a *Adapter) GetEnvironmentConfig(
 // discoverEnvironments scans chartDir/env/ for files matching *-values.yaml.
 // If no env/ directory or no matching files exist, returns empty slice.
 func (a *Adapter) discoverEnvironments(chartDir string) []domain.EnvironmentConfig {
-	envDir := filepath.Join(chartDir, "env")
+	envDir := filepath.Join(chartDir, a.envDir)
 
 	entries, err := os.ReadDir(envDir)
 	if err != nil {
@@ -68,13 +74,13 @@ func (a *Adapter) discoverEnvironments(chartDir string) []domain.EnvironmentConf
 			continue
 		}
 		name := entry.Name()
-		if !strings.HasSuffix(name, "-values.yaml") {
+		if !strings.HasSuffix(name, a.valuesFileSuffix) {
 			continue
 		}
-		envName := strings.TrimSuffix(name, "-values.yaml")
+		envName := strings.TrimSuffix(name, a.valuesFileSuffix)
 		configs = append(configs, domain.EnvironmentConfig{
 			Name:       envName,
-			ValueFiles: []string{filepath.Join("env", name)},
+			ValueFiles: []string{filepath.Join(a.envDir, name)},
 		})
 	}
 

@@ -29,6 +29,7 @@ type Adapter struct {
 	localPath     string        // Local filesystem path for clone
 	syncInterval  time.Duration // How often to sync the repo
 	folderPattern string        // Folder structure pattern (e.g., "{chartName}/{envName}")
+	chartDir      string        // Top-level chart directory (e.g., "charts")
 
 	mu     sync.RWMutex         // Protects index during updates
 	stopCh chan struct{}        // Signal to stop background sync
@@ -52,6 +53,7 @@ func New(
 	syncInterval time.Duration,
 	folderPattern string,
 	logger *slog.Logger,
+	chartDir string,
 ) (*Adapter, error) {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
@@ -62,6 +64,7 @@ func New(
 		localPath:     localPath,
 		syncInterval:  syncInterval,
 		folderPattern: folderPattern,
+		chartDir:      chartDir,
 		stopCh:        make(chan struct{}),
 		index:         make(map[string][]AppData),
 		logger:        logger,
@@ -318,7 +321,7 @@ func (a *Adapter) GetEnvironmentConfig(
 	if !exists || len(apps) == 0 {
 		a.logger.Info("chart not found in argo apps", "chartName", chartName)
 		return domain.ChartConfig{
-			Path:         "charts/" + chartName,
+			Path:         a.chartDir + "/" + chartName,
 			Environments: []domain.EnvironmentConfig{}, // Empty - will fall back to discovery
 		}, nil
 	}

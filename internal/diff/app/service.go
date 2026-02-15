@@ -31,15 +31,12 @@ type DiffService struct {
 	unifiedDiff   ports.DiffPort // Line-based diff (e.g., go-difflib)
 	logger        *slog.Logger
 	tracer        trace.Tracer
+	chartDir      string // Top-level chart directory (e.g., "charts")
 
 	// Pre-created metric instruments (created once, reused per call)
-	execCounter     metric.Int64Counter
-	execDuration    metric.Float64Histogram
-	chartsProcessed metric.Int64Counter
-	envsProcessed   metric.Int64Counter
-	diffStatus      metric.Int64Counter
-	renderDuration  metric.Float64Histogram
-	diffDuration    metric.Float64Histogram
+	execCounter  metric.Int64Counter
+	execDuration metric.Float64Histogram
+	diffStatus   metric.Int64Counter
 }
 
 // NewDiffService creates a new DiffService wired with all driven ports.
@@ -56,54 +53,37 @@ func NewDiffService(
 	logger *slog.Logger,
 	meter metric.Meter,
 	tracer trace.Tracer,
+	chartDir string,
+	metricPrefix string,
 ) *DiffService {
-	execCounter, _ := meter.Int64Counter("chart_val.executions",
+	execCounter, _ := meter.Int64Counter(metricPrefix+".executions",
 		metric.WithUnit("{invocation}"),
 		metric.WithDescription("Number of Execute() invocations"),
 	)
-	execDuration, _ := meter.Float64Histogram("chart_val.execution.duration",
+	execDuration, _ := meter.Float64Histogram(metricPrefix+".execution.duration",
 		metric.WithUnit("s"),
 		metric.WithDescription("Duration of Execute() calls"),
 	)
-	chartsProcessed, _ := meter.Int64Counter("chart_val.charts.processed",
-		metric.WithUnit("{chart}"),
-		metric.WithDescription("Number of charts processed"),
-	)
-	envsProcessed, _ := meter.Int64Counter("chart_val.environments.processed",
-		metric.WithUnit("{environment}"),
-		metric.WithDescription("Number of environments processed"),
-	)
-	diffStatus, _ := meter.Int64Counter("chart_val.diff.status",
+	diffStatus, _ := meter.Int64Counter(metricPrefix+".diff.status",
 		metric.WithUnit("{result}"),
-		metric.WithDescription("Diff results by status"),
-	)
-	renderDuration, _ := meter.Float64Histogram("chart_val.render.duration",
-		metric.WithUnit("s"),
-		metric.WithDescription("Duration of Render() calls"),
-	)
-	diffDuration, _ := meter.Float64Histogram("chart_val.diff.duration",
-		metric.WithUnit("s"),
-		metric.WithDescription("Duration of ComputeDiff() calls"),
+		metric.WithDescription("Diff results by status (success, changes, error)"),
 	)
 
 	return &DiffService{
-		sourceControl:   sc,
-		changedCharts:   cc,
-		argoEnvConfig:   argoEnvConfig,
-		fsEnvConfig:     fsEnvConfig,
-		renderer:        rn,
-		reporter:        rp,
-		semanticDiff:    semanticDiff,
-		unifiedDiff:     unifiedDiff,
-		logger:          logger,
-		tracer:          tracer,
-		execCounter:     execCounter,
-		execDuration:    execDuration,
-		chartsProcessed: chartsProcessed,
-		envsProcessed:   envsProcessed,
-		diffStatus:      diffStatus,
-		renderDuration:  renderDuration,
-		diffDuration:    diffDuration,
+		sourceControl: sc,
+		changedCharts: cc,
+		argoEnvConfig: argoEnvConfig,
+		fsEnvConfig:   fsEnvConfig,
+		renderer:      rn,
+		reporter:      rp,
+		semanticDiff:  semanticDiff,
+		unifiedDiff:   unifiedDiff,
+		logger:        logger,
+		tracer:        tracer,
+		chartDir:      chartDir,
+		execCounter:   execCounter,
+		execDuration:  execDuration,
+		diffStatus:    diffStatus,
 	}
 }
 
@@ -199,7 +179,7 @@ func (s *DiffService) getChartConfig(
 	)
 	defer span.End()
 
-	chartPath := "charts/" + chartName
+	chartPath := s.chartDir + "/" + chartName
 
 	// Try Argo apps first (if configured)
 	if s.argoEnvConfig != nil {
@@ -266,8 +246,6 @@ func (s *DiffService) processChart(
 		),
 	)
 	defer span.End()
-
-	s.chartsProcessed.Add(ctx, 1, metric.WithAttributes(attribute.String("chart", chartName)))
 
 	// Fetch base chart files
 	baseDir, baseCleanup, err := s.sourceControl.FetchChartFiles(ctx, pr.Owner, pr.Repo, pr.BaseRef, chartPath)
@@ -406,11 +384,6 @@ func (s *DiffService) diffChartEnv(
 	)
 	defer span.End()
 
-	s.envsProcessed.Add(ctx, 1, metric.WithAttributes(
-		attribute.String("chart", chartName),
-		attribute.String("environment", env.Name),
-	))
-
 	var baseManifest []byte
 	var err error
 
@@ -426,12 +399,7 @@ func (s *DiffService) diffChartEnv(
 			"valueFiles",
 			env.ValueFiles,
 		)
-		renderStart := time.Now()
 		baseManifest, err = s.renderer.Render(ctx, baseDir, env.ValueFiles)
-		s.renderDuration.Record(ctx, time.Since(renderStart).Seconds(), metric.WithAttributes(
-			attribute.String("chart", chartName),
-			attribute.String("ref", "base"),
-		))
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, "rendering base")
@@ -453,12 +421,7 @@ func (s *DiffService) diffChartEnv(
 		"valueFiles",
 		env.ValueFiles,
 	)
-	renderStart := time.Now()
 	headManifest, err := s.renderer.Render(ctx, headDir, env.ValueFiles)
-	s.renderDuration.Record(ctx, time.Since(renderStart).Seconds(), metric.WithAttributes(
-		attribute.String("chart", chartName),
-		attribute.String("ref", "head"),
-	))
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "rendering head")
@@ -471,16 +434,11 @@ func (s *DiffService) diffChartEnv(
 	headName := domain.DiffLabel(chartName, env.Name, pr.HeadRef)
 
 	// Compute semantic diff (dyff) - may be empty if dyff not available
-	diffStart := time.Now()
 	semanticDiff := s.semanticDiff.ComputeDiff(baseName, headName, baseManifest, headManifest)
 	s.logger.Info("semantic diff computed", "chart", chartName, "env", env.Name, "size", len(semanticDiff))
 
 	// Always compute unified diff as fallback
 	unifiedDiff := s.unifiedDiff.ComputeDiff(baseName, headName, baseManifest, headManifest)
-	s.diffDuration.Record(ctx, time.Since(diffStart).Seconds(), metric.WithAttributes(
-		attribute.String("chart", chartName),
-		attribute.String("environment", env.Name),
-	))
 	s.logger.Info("unified diff computed", "chart", chartName, "env", env.Name, "size", len(unifiedDiff))
 
 	var status domain.Status

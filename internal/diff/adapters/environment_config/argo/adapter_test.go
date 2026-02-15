@@ -343,6 +343,7 @@ func TestGetEnvironmentConfig(t *testing.T) {
 	t.Parallel()
 
 	adapter := &Adapter{
+		chartDir: "charts",
 		index: map[string][]AppData{
 			"my-app": {
 				{
@@ -459,6 +460,7 @@ func TestNew(t *testing.T) {
 		1*time.Hour,
 		"{chartName}/{envName}",
 		slog.New(slog.NewTextHandler(os.Stderr, nil)),
+		"charts",
 	)
 	if err != nil {
 		t.Fatalf("New failed: %v", err)

@@ -104,12 +104,13 @@ func TestIntegration_FullDiffFlow(t *testing.T) {
 	}
 
 	// Generate grouped check run markdown (one per chart) - using production code
-	checkRunMD := githubout.FormatCheckRunMarkdown(allResults)
+	reporter := githubout.New(nil, "chart-val", "")
+	checkRunMD := reporter.FormatCheckRunMarkdown(allResults)
 	goldenFile := filepath.Join(goldenDir, "check-run-my-app.md")
 	compareOrUpdateGolden(t, goldenFile, checkRunMD)
 
 	// Generate PR summary comment - using production code
-	prComment := githubout.FormatPRComment(allResults)
+	prComment := reporter.FormatPRComment(allResults)
 	goldenFile = filepath.Join(goldenDir, "pr-comment.md")
 	compareOrUpdateGolden(t, goldenFile, prComment)
 }
@@ -206,7 +207,8 @@ func TestIntegration_NewChart(t *testing.T) {
 	}
 
 	// Generate grouped check run markdown - using production code
-	checkRunMD := githubout.FormatCheckRunMarkdown(allResults)
+	reporter := githubout.New(nil, "chart-val", "")
+	checkRunMD := reporter.FormatCheckRunMarkdown(allResults)
 	goldenFile := filepath.Join(goldenDir, "check-run-new-chart.md")
 	compareOrUpdateGolden(t, goldenFile, checkRunMD)
 }
@@ -316,12 +318,13 @@ func TestIntegration_ThreeChartsOneChanged(t *testing.T) {
 	}
 
 	// Check run should show all charts (changed + unchanged)
-	checkRunMD := githubout.FormatCheckRunMarkdown(allResults)
+	reporter := githubout.New(nil, "chart-val", "")
+	checkRunMD := reporter.FormatCheckRunMarkdown(allResults)
 	goldenFile := filepath.Join(goldenDir, "check-run-three-charts.md")
 	compareOrUpdateGolden(t, goldenFile, checkRunMD)
 
 	// PR comment should only be for the changed chart (my-app)
-	prComment := githubout.FormatPRComment(changedResults)
+	prComment := reporter.FormatPRComment(changedResults)
 	goldenFile = filepath.Join(goldenDir, "pr-comment-three-charts.md")
 	compareOrUpdateGolden(t, goldenFile, prComment)
 }

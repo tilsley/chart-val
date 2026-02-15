@@ -19,15 +19,17 @@ import (
 // for files changed in a pull request, detecting Chart.yaml changes,
 // and reading chart names from the file content.
 type Adapter struct {
-	client *github.Client
-	logger *slog.Logger
+	client   *github.Client
+	logger   *slog.Logger
+	chartDir string
 }
 
 // New creates a new PR files adapter.
-func New(client *github.Client, logger *slog.Logger) *Adapter {
+func New(client *github.Client, logger *slog.Logger, chartDir string) *Adapter {
 	return &Adapter{
-		client: client,
-		logger: logger,
+		client:   client,
+		logger:   logger,
+		chartDir: chartDir,
 	}
 }
 
@@ -43,10 +45,10 @@ func (a *Adapter) GetChangedCharts(ctx context.Context, pr domain.PRContext) ([]
 
 	a.logger.Debug("found changed files in PR", "count", len(changedFiles), "files", changedFiles)
 
-	// Find unique chart directories from any changed file under charts/{name}/
+	// Find unique chart directories from any changed file under {chartDir}/{name}/
 	chartDirs := make(map[string]struct{})
 	for _, file := range changedFiles {
-		if dir := extractChartDir(file); dir != "" {
+		if dir := a.extractChartDir(file); dir != "" {
 			chartDirs[dir] = struct{}{}
 			a.logger.Debug("detected chart directory from changed file", "file", file, "chartDir", dir)
 		}
@@ -131,14 +133,19 @@ func (a *Adapter) fetchFile(ctx context.Context, owner, repo, ref, filePath stri
 }
 
 // extractChartDir returns the chart directory (e.g., "charts/my-app") from a file path,
-// or empty string if the file is not under a charts/ directory.
+// or empty string if the file is not under the configured chart directory.
 // E.g., "charts/my-app/env/prod-values.yaml" -> "charts/my-app"
-func extractChartDir(filePath string) string {
-	parts := strings.SplitN(filePath, "/", 3)
-	if len(parts) < 2 || parts[0] != "charts" || parts[1] == "" {
+func (a *Adapter) extractChartDir(filePath string) string {
+	prefix := a.chartDir + "/"
+	if !strings.HasPrefix(filePath, prefix) {
 		return ""
 	}
-	return parts[0] + "/" + parts[1]
+	rest := filePath[len(prefix):]
+	parts := strings.SplitN(rest, "/", 2)
+	if len(parts) < 1 || parts[0] == "" {
+		return ""
+	}
+	return a.chartDir + "/" + parts[0]
 }
 
 // parseChartName extracts the chart name from Chart.yaml content.

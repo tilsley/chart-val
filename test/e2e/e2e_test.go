@@ -871,13 +871,13 @@ func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webh
 	if err != nil {
 		t.Fatalf("creating helm adapter: %v", err)
 	}
-	reporter := githubout.New(githubClient)
-	changedCharts := prfiles.New(githubClient, log)
+	reporter := githubout.New(githubClient, "chart-val", "")
+	changedCharts := prfiles.New(githubClient, log, "charts")
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
 	// Environment config: filesystem discovery
-	filesystemEnvConfig := fsenv.New(sourceCtrl)
+	filesystemEnvConfig := fsenv.New(sourceCtrl, "charts", "env", "-values.yaml")
 
 	// Use real OTel when OTEL_ENABLED=true (e.g., with local Jaeger),
 	// otherwise noop for zero overhead in normal test runs.
@@ -914,6 +914,8 @@ func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webh
 		log,
 		meter,
 		tracer,
+		"charts",
+		"chart_val",
 	)
 
 	// Create webhook handler

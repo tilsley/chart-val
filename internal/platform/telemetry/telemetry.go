@@ -13,12 +13,9 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"go.opentelemetry.io/otel/trace"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
 )
-
-const serviceName = "chart-val"
 
 // Telemetry holds the OTel meter and tracer plus a shutdown function.
 type Telemetry struct {
@@ -29,19 +26,24 @@ type Telemetry struct {
 
 // New creates a Telemetry instance. When enabled is false, noop
 // implementations are returned with zero overhead. When enabled, the OTel SDK
-// auto-discovers OTEL_EXPORTER_OTLP_ENDPOINT, OTEL_SERVICE_NAME, etc. from
-// the environment.
+// auto-discovers configuration from standard env vars:
+//   - OTEL_SERVICE_NAME — service identity
+//   - OTEL_EXPORTER_OTLP_ENDPOINT — OTLP collector address
+//   - OTEL_RESOURCE_ATTRIBUTES — additional resource attributes
+//
+// Set OTEL_SERVICE_NAME before calling New (the caller defaults it to AppName).
 func New(ctx context.Context, enabled bool) (*Telemetry, error) {
 	if !enabled {
 		return &Telemetry{
-			Meter:    noopmetric.NewMeterProvider().Meter(serviceName),
-			Tracer:   nooptrace.NewTracerProvider().Tracer(serviceName),
+			Meter:    noopmetric.NewMeterProvider().Meter("noop"),
+			Tracer:   nooptrace.NewTracerProvider().Tracer("noop"),
 			Shutdown: func(context.Context) error { return nil },
 		}, nil
 	}
 
 	res, err := resource.New(ctx,
-		resource.WithAttributes(semconv.ServiceName(serviceName)),
+		resource.WithFromEnv(),
+		resource.WithTelemetrySDK(),
 	)
 	if err != nil {
 		return nil, err
@@ -83,8 +85,8 @@ func New(ctx context.Context, enabled bool) (*Telemetry, error) {
 	}
 
 	return &Telemetry{
-		Meter:    mp.Meter(serviceName),
-		Tracer:   tp.Tracer(serviceName),
+		Meter:    mp.Meter("github.com/nathantilsley/chart-val"),
+		Tracer:   tp.Tracer("github.com/nathantilsley/chart-val"),
 		Shutdown: shutdown,
 	}, nil
 }

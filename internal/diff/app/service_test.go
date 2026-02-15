@@ -19,7 +19,10 @@ type mockSourceControl struct {
 	charts map[string]bool // map of "ref:chartPath" -> exists
 }
 
-func (m *mockSourceControl) FetchChartFiles(_ context.Context, _, _, ref, chartPath string) (string, func(), error) {
+func (m *mockSourceControl) FetchChartFiles(
+	_ context.Context,
+	_, _, ref, chartPath string,
+) (string, func(), error) {
 	key := ref + ":" + chartPath
 	if !m.charts[key] {
 		return "", nil, domain.NewNotFoundError(chartPath, ref)
@@ -32,7 +35,10 @@ type mockChangedCharts struct {
 	charts []domain.ChangedChart
 }
 
-func (m *mockChangedCharts) GetChangedCharts(_ context.Context, _ domain.PRContext) ([]domain.ChangedChart, error) {
+func (m *mockChangedCharts) GetChangedCharts(
+	_ context.Context,
+	_ domain.PRContext,
+) ([]domain.ChangedChart, error) {
 	return m.charts, nil
 }
 
@@ -88,7 +94,11 @@ func (m *mockReporter) UpdateCheckWithResults(
 	return nil
 }
 
-func (m *mockReporter) PostComment(_ context.Context, _ domain.PRContext, _ []domain.DiffResult) error {
+func (m *mockReporter) PostComment(
+	_ context.Context,
+	_ domain.PRContext,
+	_ []domain.DiffResult,
+) error {
 	m.commentCount++
 	return nil
 }
@@ -97,7 +107,13 @@ type mockDiff struct{}
 
 func (m *mockDiff) ComputeDiff(baseName, headName string, base, head []byte) string {
 	if string(base) != string(head) {
-		return fmt.Sprintf("--- %s\n+++ %s\n@@ -1 +1 @@\n-%s\n+%s", baseName, headName, string(base), string(head))
+		return fmt.Sprintf(
+			"--- %s\n+++ %s\n@@ -1 +1 @@\n-%s\n+%s",
+			baseName,
+			headName,
+			string(base),
+			string(head),
+		)
 	}
 	return ""
 }
@@ -112,8 +128,13 @@ func TestService_NoChartChanges(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log,
-		noopmetric.NewMeterProvider().Meter("test"), nooptrace.NewTracerProvider().Tracer("test"))
+	svc := NewDiffService(
+		srcCtrl, changedCharts, nil, envConfig, renderer, reporter,
+		semanticDiff, unifiedDiff, log,
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -166,8 +187,13 @@ func TestService_NewChartNotInBase(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log,
-		noopmetric.NewMeterProvider().Meter("test"), nooptrace.NewTracerProvider().Tracer("test"))
+	svc := NewDiffService(
+		srcCtrl, changedCharts, nil, envConfig, renderer, reporter,
+		semanticDiff, unifiedDiff, log,
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -194,7 +220,10 @@ func TestService_NewChartNotInBase(t *testing.T) {
 	}
 
 	if result.Status != domain.StatusChanges {
-		t.Errorf("expected StatusChanges, got %v (new chart should show all additions)", result.Status)
+		t.Errorf(
+			"expected StatusChanges, got %v (new chart should show all additions)",
+			result.Status,
+		)
 	}
 
 	if !strings.Contains(result.UnifiedDiff, "+") {
@@ -247,8 +276,13 @@ func TestService_ThreeChartsOneChanged(t *testing.T) {
 	unifiedDiff := &mockDiff{}
 	log := logger.New("error")
 
-	svc := NewDiffService(srcCtrl, changedCharts, nil, envConfig, renderer, reporter, semanticDiff, unifiedDiff, log,
-		noopmetric.NewMeterProvider().Meter("test"), nooptrace.NewTracerProvider().Tracer("test"))
+	svc := NewDiffService(
+		srcCtrl, changedCharts, nil, envConfig, renderer, reporter,
+		semanticDiff, unifiedDiff, log,
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
 
 	pr := domain.PRContext{
 		Owner:    "test-owner",
@@ -377,10 +411,15 @@ func TestExtractChartNames(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := domain.ExtractChartNames(tt.files)
+			result := domain.ExtractChartNames(tt.files, "charts")
 
 			if len(result) != len(tt.expected) {
-				t.Errorf("expected %d chart names, got %d: %v", len(tt.expected), len(result), result)
+				t.Errorf(
+					"expected %d chart names, got %d: %v",
+					len(tt.expected),
+					len(result),
+					result,
+				)
 				return
 			}
 

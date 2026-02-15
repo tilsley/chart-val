@@ -26,6 +26,13 @@ type Config struct {
 
 	// OpenTelemetry (optional)
 	OTelEnabled bool // OTEL_ENABLED feature flag
+
+	// App identity and conventions (optional, sensible defaults)
+	AppName          string // APP_NAME (default: "chart-val")
+	AppURL           string // APP_URL (default: ""); footer link in PR comments
+	ChartDir         string // CHART_DIR (default: "charts"); top-level dir containing charts
+	EnvDir           string // ENV_DIR (default: "env"); subdirectory within chart for env overrides
+	ValuesFileSuffix string // VALUES_FILE_SUFFIX (default: "-values.yaml"); pattern for value files
 }
 
 // Load reads configuration from environment variables, validates required
@@ -45,6 +52,7 @@ func Load() (Config, error) {
 	}
 
 	loadOTelConfig(&cfg)
+	loadAppConfig(&cfg)
 
 	return cfg, nil
 }
@@ -125,6 +133,14 @@ func getEnvOrDefault(envKey, defaultValue string) string {
 
 func loadOTelConfig(cfg *Config) {
 	cfg.OTelEnabled = os.Getenv("OTEL_ENABLED") == "true"
+}
+
+func loadAppConfig(cfg *Config) {
+	cfg.AppName = getEnvOrDefault("APP_NAME", "chart-val")
+	cfg.AppURL = os.Getenv("APP_URL")
+	cfg.ChartDir = getEnvOrDefault("CHART_DIR", "charts")
+	cfg.EnvDir = getEnvOrDefault("ENV_DIR", "env")
+	cfg.ValuesFileSuffix = getEnvOrDefault("VALUES_FILE_SUFFIX", "-values.yaml")
 }
 
 func parseDurationOrDefault(envKey string, defaultValue time.Duration) (time.Duration, error) {

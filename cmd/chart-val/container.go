@@ -4,6 +4,7 @@ package main
 import (
 	"fmt"
 	"log/slog"
+	"strings"
 
 	gogithub "github.com/google/go-github/v68/github"
 
@@ -46,14 +47,14 @@ func NewContainer(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry)
 	if err != nil {
 		return nil, fmt.Errorf("creating helm adapter: %w", err)
 	}
-	reporter := githubout.New(githubClient)
-	changedCharts := prfiles.New(githubClient, log)
+	reporter := githubout.New(githubClient, cfg.AppName, cfg.AppURL)
+	changedCharts := prfiles.New(githubClient, log, cfg.ChartDir)
 	semanticDiff := dyffdiff.New()
 	unifiedDiff := linediff.New()
 
 	// Environment config adapters (both discover where charts are deployed)
 	// Filesystem adapter - discovers from chart's env/ folder
-	filesystemEnvConfig := fsenv.New(sourceCtrl)
+	filesystemEnvConfig := fsenv.New(sourceCtrl, cfg.ChartDir, cfg.EnvDir, cfg.ValuesFileSuffix)
 
 	// Optionally create Argo adapter (source of truth when available)
 	var argoEnvConfig ports.EnvironmentConfigPort
@@ -69,6 +70,7 @@ func NewContainer(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry)
 			cfg.ArgoAppsSyncInterval,
 			cfg.ArgoAppsFolderPattern,
 			log,
+			cfg.ChartDir,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("creating argo environment config adapter: %w", err)
@@ -79,6 +81,7 @@ func NewContainer(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry)
 	}
 
 	// Domain service (handles composite strategy: Argo → Filesystem → Base chart)
+	metricPrefix := strings.ReplaceAll(cfg.AppName, "-", "_")
 	diffService := app.NewDiffService(
 		sourceCtrl,
 		changedCharts,
@@ -91,6 +94,8 @@ func NewContainer(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry)
 		log,
 		tel.Meter,
 		tel.Tracer,
+		cfg.ChartDir,
+		metricPrefix,
 	)
 
 	// Webhook handler
