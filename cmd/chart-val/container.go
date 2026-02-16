@@ -111,7 +111,6 @@ func NewContainer(
 		diffService,
 		cfg.WebhookSecret,
 		log,
-		cfg.MaxConcurrentExecutions,
 	)
 
 	return &Container{

@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -91,7 +90,7 @@ func newSignedPRRequest(
 
 func newTestHandler(uc interface {
 	Execute(context.Context, domain.PRContext) error
-}, maxConcurrent int,
+},
 ) *WebhookHandler {
 	return NewWebhookHandler(
 		uc,
@@ -100,7 +99,6 @@ func newTestHandler(uc interface {
 			&discardWriter{},
 			&slog.HandlerOptions{Level: slog.LevelError},
 		)),
-		maxConcurrent,
 	)
 }
 
@@ -129,7 +127,7 @@ func waitFor(
 // ---------------------------------------------------------------------------
 
 func TestHandler_InvalidSignature(t *testing.T) {
-	h := newTestHandler(noopUseCase{}, 5)
+	h := newTestHandler(noopUseCase{})
 
 	body := buildPRPayload(t, "opened")
 	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader(body))
@@ -146,7 +144,7 @@ func TestHandler_InvalidSignature(t *testing.T) {
 }
 
 func TestHandler_NonPREvent(t *testing.T) {
-	h := newTestHandler(noopUseCase{}, 5)
+	h := newTestHandler(noopUseCase{})
 
 	// Send a push event — handler should return 200 (ignored).
 	body := []byte(`{"ref":"refs/heads/main"}`)
@@ -164,7 +162,7 @@ func TestHandler_NonPREvent(t *testing.T) {
 }
 
 func TestHandler_IgnoredActions(t *testing.T) {
-	h := newTestHandler(noopUseCase{}, 5)
+	h := newTestHandler(noopUseCase{})
 
 	for _, action := range []string{"closed", "edited", "labeled", "assigned"} {
 		t.Run(action, func(t *testing.T) {
@@ -181,7 +179,7 @@ func TestHandler_IgnoredActions(t *testing.T) {
 func TestHandler_AcceptedActions(t *testing.T) {
 	for _, action := range []string{"opened", "synchronize", "reopened"} {
 		t.Run(action, func(t *testing.T) {
-			h := newTestHandler(noopUseCase{}, 5)
+			h := newTestHandler(noopUseCase{})
 			rr := httptest.NewRecorder()
 			h.ServeHTTP(rr, newSignedPRRequest(t, testSecret, action))
 
@@ -198,7 +196,8 @@ func TestHandler_AcceptedActions(t *testing.T) {
 
 func TestSemaphore_Returns202Immediately(t *testing.T) {
 	uc := &blockingUseCase{gate: make(chan struct{})}
-	h := newTestHandler(uc, 1)
+	h := newTestHandler(uc)
+	h.sem = make(chan struct{}, 1) // single slot to prove non-blocking
 
 	// Saturate the single slot.
 	rr := httptest.NewRecorder()
@@ -232,25 +231,21 @@ func TestSemaphore_Returns202Immediately(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func BenchmarkWebhookHandler(b *testing.B) {
-	for _, maxC := range []int{1, 5, 10, 20} {
-		b.Run(fmt.Sprintf("maxConcurrent=%d", maxC), func(b *testing.B) {
-			h := newTestHandler(noopUseCase{}, maxC)
-			body := buildPRPayload(b, "opened")
-			sig := sign(body, testSecret)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for range b.N {
-				rr := httptest.NewRecorder()
-				req := httptest.NewRequest(
-					http.MethodPost,
-					"/webhook",
-					bytes.NewReader(body),
-				)
-				req.Header.Set("Content-Type", "application/json")
-				req.Header.Set("X-Hub-Signature-256", sig)
-				req.Header.Set("X-GitHub-Event", "pull_request")
-				h.ServeHTTP(rr, req)
-			}
-		})
+	h := newTestHandler(noopUseCase{})
+	body := buildPRPayload(b, "opened")
+	sig := sign(body, testSecret)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		rr := httptest.NewRecorder()
+		req := httptest.NewRequest(
+			http.MethodPost,
+			"/webhook",
+			bytes.NewReader(body),
+		)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Hub-Signature-256", sig)
+		req.Header.Set("X-GitHub-Event", "pull_request")
+		h.ServeHTTP(rr, req)
 	}
 }

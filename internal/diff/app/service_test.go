@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	noopmetric "go.opentelemetry.io/otel/metric/noop"
 	nooptrace "go.opentelemetry.io/otel/trace/noop"
@@ -434,5 +436,304 @@ func TestExtractChartNames(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// --- Concurrency test helpers ---
+
+// blockingRenderer blocks on gate and tracks concurrent active renders.
+type blockingRenderer struct {
+	gate   chan struct{}
+	active atomic.Int32
+	peak   atomic.Int32
+}
+
+func (b *blockingRenderer) Render(_ context.Context, _ string, _ []string) ([]byte, error) {
+	cur := b.active.Add(1)
+	// CAS-update peak
+	for {
+		old := b.peak.Load()
+		if cur <= old || b.peak.CompareAndSwap(old, cur) {
+			break
+		}
+	}
+	<-b.gate // block until released
+	b.active.Add(-1)
+	return []byte("manifest"), nil
+}
+
+// newTestService creates a DiffService wired for processChart tests.
+func newTestService(
+	renderer *blockingRenderer,
+	envs []domain.EnvironmentConfig,
+) *DiffService {
+	chartName := "test-chart"
+	charts := map[string]bool{
+		"main:charts/" + chartName:    true,
+		"feature:charts/" + chartName: true,
+	}
+	return NewDiffService(
+		&mockSourceControl{charts: charts},
+		&mockChangedCharts{},
+		nil,
+		&mockEnvConfig{
+			config: domain.ChartConfig{
+				Path:         "charts/" + chartName,
+				Environments: envs,
+			},
+		},
+		renderer,
+		&mockReporter{},
+		&mockDiff{},
+		&mockDiff{},
+		logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+}
+
+func makeEnvs(n int) []domain.EnvironmentConfig {
+	envs := make([]domain.EnvironmentConfig, n)
+	for i := range envs {
+		envs[i] = domain.EnvironmentConfig{
+			Name:       fmt.Sprintf("env-%d", i),
+			ValueFiles: []string{fmt.Sprintf("env/env-%d-values.yaml", i)},
+		}
+	}
+	return envs
+}
+
+// waitForActive spins until br.active reaches the target value, or fails after timeout.
+func waitForActive(t *testing.T, br *blockingRenderer, target int32, msg string) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for br.active.Load() != target {
+		select {
+		case <-deadline:
+			t.Fatalf("%s: timed out, active=%d want=%d", msg, br.active.Load(), target)
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+}
+
+func TestProcessChart_EnvsRunConcurrently(t *testing.T) {
+	envs := makeEnvs(4)
+	br := &blockingRenderer{gate: make(chan struct{})}
+	svc := newTestService(br, envs)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+	}
+	config := domain.ChartConfig{
+		Path:         "charts/test-chart",
+		Environments: envs,
+	}
+
+	done := make(chan []domain.DiffResult, 1)
+	go func() {
+		done <- svc.processChart(context.Background(), pr, config)
+	}()
+
+	// Wait for all 4 base renders to be in-flight simultaneously
+	waitForActive(t, br, 4, "base renders")
+
+	// Release 4 base renders
+	for i := 0; i < 4; i++ {
+		br.gate <- struct{}{}
+	}
+
+	// Wait for all 4 head renders to be in-flight
+	waitForActive(t, br, 4, "head renders")
+
+	// Release 4 head renders
+	for i := 0; i < 4; i++ {
+		br.gate <- struct{}{}
+	}
+
+	select {
+	case results := <-done:
+		if len(results) != 4 {
+			t.Fatalf("expected 4 results, got %d", len(results))
+		}
+		for i, r := range results {
+			if r.Environment != fmt.Sprintf("env-%d", i) {
+				t.Errorf("result[%d]: expected env-%d, got %s", i, i, r.Environment)
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for processChart to complete")
+	}
+}
+
+func TestProcessChart_ConcurrencyLimit(t *testing.T) {
+	envs := makeEnvs(6)
+	br := &blockingRenderer{gate: make(chan struct{})}
+	svc := newTestService(br, envs)
+	svc.maxEnvConcurrency = 2 // override to test semaphore cap
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+	}
+	config := domain.ChartConfig{
+		Path:         "charts/test-chart",
+		Environments: envs,
+	}
+
+	done := make(chan []domain.DiffResult, 1)
+	go func() {
+		done <- svc.processChart(context.Background(), pr, config)
+	}()
+
+	// Wait for exactly 2 concurrent renders (the semaphore cap)
+	waitForActive(t, br, 2, "semaphore cap")
+
+	// Give a brief moment for any additional goroutines to (incorrectly) start
+	time.Sleep(50 * time.Millisecond)
+	if peak := br.peak.Load(); peak > 2 {
+		t.Fatalf("peak concurrency %d exceeded limit of 2", peak)
+	}
+
+	// Release renders in pairs until all 6 envs complete (6 base + 6 head = 12 renders)
+	for i := 0; i < 12; i++ {
+		br.gate <- struct{}{}
+		// Brief pause to let goroutines cycle
+		time.Sleep(time.Millisecond)
+	}
+
+	select {
+	case results := <-done:
+		if len(results) != 6 {
+			t.Fatalf("expected 6 results, got %d", len(results))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for processChart to complete")
+	}
+
+	if peak := br.peak.Load(); peak > 2 {
+		t.Fatalf("peak concurrency %d exceeded limit of 2", peak)
+	}
+}
+
+func TestProcessChart_MultipleEnvsCorrectResults(t *testing.T) {
+	envs := []domain.EnvironmentConfig{
+		{Name: "dev", ValueFiles: []string{"env/dev-values.yaml"}},
+		{Name: "staging", ValueFiles: []string{"env/staging-values.yaml"}},
+		{Name: "prod", ValueFiles: []string{"env/prod-values.yaml"}},
+	}
+
+	renderer := &mockRenderer{
+		manifests: map[string]string{
+			"main:charts/test-chart":    "replicas: 1",
+			"feature:charts/test-chart": "replicas: 3",
+		},
+	}
+
+	svc := NewDiffService(
+		&mockSourceControl{charts: map[string]bool{
+			"main:charts/test-chart":    true,
+			"feature:charts/test-chart": true,
+		}},
+		&mockChangedCharts{},
+		nil,
+		&mockEnvConfig{config: domain.ChartConfig{
+			Path:         "charts/test-chart",
+			Environments: envs,
+		}},
+		renderer,
+		&mockReporter{},
+		&mockDiff{},
+		&mockDiff{},
+		logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+	}
+	config := domain.ChartConfig{
+		Path:         "charts/test-chart",
+		Environments: envs,
+	}
+
+	results := svc.processChart(context.Background(), pr, config)
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+
+	expectedEnvs := []string{"dev", "staging", "prod"}
+	for i, r := range results {
+		if r.Environment != expectedEnvs[i] {
+			t.Errorf("result[%d]: expected env %q, got %q", i, expectedEnvs[i], r.Environment)
+		}
+		if r.ChartName != "test-chart" {
+			t.Errorf("result[%d]: expected chart test-chart, got %s", i, r.ChartName)
+		}
+		if r.Status != domain.StatusChanges {
+			t.Errorf("result[%d]: expected StatusChanges, got %v", i, r.Status)
+		}
+		if r.UnifiedDiff == "" {
+			t.Errorf("result[%d]: expected non-empty unified diff", i)
+		}
+	}
+}
+
+// noopRenderer returns immediately — used for benchmarks.
+type noopRenderer struct{}
+
+func (n *noopRenderer) Render(_ context.Context, _ string, _ []string) ([]byte, error) {
+	return []byte("manifest"), nil
+}
+
+func BenchmarkProcessChart_EnvParallelism(b *testing.B) {
+	for _, envCount := range []int{1, 3, 5, 10} {
+		for _, concurrency := range []int{1, envCount} {
+			name := fmt.Sprintf("envs=%d/concurrency=%d", envCount, concurrency)
+			b.Run(name, func(b *testing.B) {
+				envs := makeEnvs(envCount)
+				charts := map[string]bool{
+					"main:charts/test-chart":    true,
+					"feature:charts/test-chart": true,
+				}
+				svc := NewDiffService(
+					&mockSourceControl{charts: charts},
+					&mockChangedCharts{},
+					nil,
+					&mockEnvConfig{config: domain.ChartConfig{
+						Path:         "charts/test-chart",
+						Environments: envs,
+					}},
+					&noopRenderer{},
+					&mockReporter{},
+					&mockDiff{},
+					&mockDiff{},
+					logger.New("error"),
+					noopmetric.NewMeterProvider().Meter("test"),
+					nooptrace.NewTracerProvider().Tracer("test"),
+					"charts", "chart_val",
+				)
+				svc.maxEnvConcurrency = concurrency
+				pr := domain.PRContext{
+					Owner: "o", Repo: "r", PRNumber: 1,
+					BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+				}
+				config := domain.ChartConfig{
+					Path:         "charts/test-chart",
+					Environments: envs,
+				}
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					svc.processChart(context.Background(), pr, config)
+				}
+			})
+		}
 	}
 }

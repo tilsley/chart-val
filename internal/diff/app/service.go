@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -16,7 +17,10 @@ import (
 	"github.com/nathantilsley/chart-val/internal/diff/ports"
 )
 
-const noChangesMessage = "No changes detected."
+const (
+	noChangesMessage      = "No changes detected."
+	defaultEnvConcurrency = 4
+)
 
 // DiffService implements ports.DiffUseCase by orchestrating the full
 // chart diff workflow: discover charts, fetch chart files, render, compute diffs, and report.
@@ -32,6 +36,8 @@ type DiffService struct {
 	logger        *slog.Logger
 	tracer        trace.Tracer
 	chartDir      string // Top-level chart directory (e.g., "charts")
+
+	maxEnvConcurrency int // Max concurrent per-environment diffs
 
 	// Pre-created metric instruments (created once, reused per call)
 	execCounter  metric.Int64Counter
@@ -70,20 +76,21 @@ func NewDiffService(
 	)
 
 	return &DiffService{
-		sourceControl: sc,
-		changedCharts: cc,
-		argoEnvConfig: argoEnvConfig,
-		fsEnvConfig:   fsEnvConfig,
-		renderer:      rn,
-		reporter:      rp,
-		semanticDiff:  semanticDiff,
-		unifiedDiff:   unifiedDiff,
-		logger:        logger,
-		tracer:        tracer,
-		chartDir:      chartDir,
-		execCounter:   execCounter,
-		execDuration:  execDuration,
-		diffStatus:    diffStatus,
+		sourceControl:     sc,
+		changedCharts:     cc,
+		argoEnvConfig:     argoEnvConfig,
+		fsEnvConfig:       fsEnvConfig,
+		renderer:          rn,
+		reporter:          rp,
+		semanticDiff:      semanticDiff,
+		unifiedDiff:       unifiedDiff,
+		logger:            logger,
+		tracer:            tracer,
+		chartDir:          chartDir,
+		maxEnvConcurrency: defaultEnvConcurrency,
+		execCounter:       execCounter,
+		execDuration:      execDuration,
+		diffStatus:        diffStatus,
 	}
 }
 
@@ -198,13 +205,21 @@ func (s *DiffService) getChartConfig(
 	}
 
 	// Fall back to discovering from chart's env/ directory
-	s.logger.Info("no argo apps found, falling back to filesystem discovery", "chartName", chartName)
+	s.logger.Info(
+		"no argo apps found, falling back to filesystem discovery",
+		"chartName",
+		chartName,
+	)
 
 	config, err := s.fsEnvConfig.GetEnvironmentConfig(ctx, pr, chartName)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "discovering environments")
-		return domain.ChartConfig{}, fmt.Errorf("discovering environments for %s: %w", chartName, err)
+		return domain.ChartConfig{}, fmt.Errorf(
+			"discovering environments for %s: %w",
+			chartName,
+			err,
+		)
 	}
 
 	if len(config.Environments) > 0 {
@@ -235,7 +250,6 @@ func (s *DiffService) processChart(
 	pr domain.PRContext,
 	config domain.ChartConfig,
 ) []domain.DiffResult {
-	var results []domain.DiffResult
 	chartName := extractChartNameFromPath(config.Path)
 	chartPath := config.Path
 
@@ -248,7 +262,13 @@ func (s *DiffService) processChart(
 	defer span.End()
 
 	// Fetch base chart files
-	baseDir, baseCleanup, err := s.sourceControl.FetchChartFiles(ctx, pr.Owner, pr.Repo, pr.BaseRef, chartPath)
+	baseDir, baseCleanup, err := s.sourceControl.FetchChartFiles(
+		ctx,
+		pr.Owner,
+		pr.Repo,
+		pr.BaseRef,
+		chartPath,
+	)
 	baseExists := true
 	if err != nil {
 		if domain.IsNotFound(err) {
@@ -284,7 +304,13 @@ func (s *DiffService) processChart(
 	defer baseCleanup()
 
 	// Fetch head chart files
-	headDir, headCleanup, err := s.sourceControl.FetchChartFiles(ctx, pr.Owner, pr.Repo, pr.HeadRef, chartPath)
+	headDir, headCleanup, err := s.sourceControl.FetchChartFiles(
+		ctx,
+		pr.Owner,
+		pr.Repo,
+		pr.HeadRef,
+		chartPath,
+	)
 	if err != nil {
 		s.logger.Error("failed to fetch head chart", "chart", chartName, "error", err)
 		span.RecordError(err)
@@ -309,62 +335,79 @@ func (s *DiffService) processChart(
 	envs := config.Environments
 	s.logger.Info("processing environments from config", "chart", chartName, "envCount", len(envs))
 
-	// Diff each environment
-	for _, env := range envs {
-		// Handle special case: environment with message but no value files (e.g., base chart)
+	// Diff each environment concurrently (bounded by maxEnvConcurrency)
+	results := make([]domain.DiffResult, len(envs))
+	sem := make(chan struct{}, s.maxEnvConcurrency)
+	var wg sync.WaitGroup
+
+	for i, env := range envs {
+		// Message-only environments: no I/O, handle inline
 		if env.Message != "" && len(env.ValueFiles) == 0 {
 			s.logger.Info(
 				"environment has message, skipping diff",
-				"chart",
-				chartName,
-				"env",
-				env.Name,
-				"message",
-				env.Message,
+				"chart", chartName,
+				"env", env.Name,
+				"message", env.Message,
 			)
-			results = append(results, domain.DiffResult{
+			results[i] = domain.DiffResult{
 				ChartName:   chartName,
 				Environment: env.Name,
 				BaseRef:     pr.BaseRef,
 				HeadRef:     pr.HeadRef,
 				Status:      domain.StatusSuccess,
 				Summary:     env.Message,
-			})
+			}
 			continue
 		}
 
-		s.logger.Info("diffing chart",
-			"chart", chartName,
-			"env", env.Name,
-			"base", pr.BaseRef,
-			"head", pr.HeadRef,
-		)
+		wg.Add(1)
+		go func(idx int, env domain.EnvironmentConfig) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 
-		result, err := s.diffChartEnv(ctx, pr, chartName, baseDir, headDir, baseExists, env)
-		if err != nil {
-			s.logger.Error("diff failed",
+			s.logger.Info("diffing chart",
 				"chart", chartName,
 				"env", env.Name,
-				"error", err,
+				"base", pr.BaseRef,
+				"head", pr.HeadRef,
 			)
-			s.diffStatus.Add(ctx, 1, metric.WithAttributes(
-				attribute.String("chart", chartName),
-				attribute.String("environment", env.Name),
-				attribute.String("status", domain.StatusError.String()),
-			))
-			results = append(results, domain.DiffResult{
-				ChartName:   chartName,
-				Environment: env.Name,
-				BaseRef:     pr.BaseRef,
-				HeadRef:     pr.HeadRef,
-				Status:      domain.StatusError,
-				Summary:     err.Error(),
-			})
-			continue
-		}
-		s.logger.Info("appending diff result", "chart", chartName, "env", env.Name, "status", result.Status)
-		results = append(results, result)
+
+			result, err := s.diffChartEnv(ctx, pr, chartName, baseDir, headDir, baseExists, env)
+			if err != nil {
+				s.logger.Error("diff failed",
+					"chart", chartName,
+					"env", env.Name,
+					"error", err,
+				)
+				s.diffStatus.Add(ctx, 1, metric.WithAttributes(
+					attribute.String("chart", chartName),
+					attribute.String("environment", env.Name),
+					attribute.String("status", domain.StatusError.String()),
+				))
+				results[idx] = domain.DiffResult{
+					ChartName:   chartName,
+					Environment: env.Name,
+					BaseRef:     pr.BaseRef,
+					HeadRef:     pr.HeadRef,
+					Status:      domain.StatusError,
+					Summary:     err.Error(),
+				}
+				return
+			}
+			s.logger.Info(
+				"diff result ready",
+				"chart",
+				chartName,
+				"env",
+				env.Name,
+				"status",
+				result.Status,
+			)
+			results[idx] = result
+		}(i, env)
 	}
+	wg.Wait()
 
 	return results
 }
@@ -405,7 +448,15 @@ func (s *DiffService) diffChartEnv(
 			span.SetStatus(codes.Error, "rendering base")
 			return domain.DiffResult{}, fmt.Errorf("failed to render base branch: %w", err)
 		}
-		s.logger.Info("base manifest rendered", "chart", chartName, "env", env.Name, "size", len(baseManifest))
+		s.logger.Info(
+			"base manifest rendered",
+			"chart",
+			chartName,
+			"env",
+			env.Name,
+			"size",
+			len(baseManifest),
+		)
 	} else {
 		s.logger.Info("skipping base render (chart not in base)", "chart", chartName, "env", env.Name)
 	}
@@ -427,7 +478,15 @@ func (s *DiffService) diffChartEnv(
 		span.SetStatus(codes.Error, "rendering head")
 		return domain.DiffResult{}, fmt.Errorf("failed to render PR changes: %w", err)
 	}
-	s.logger.Info("head manifest rendered", "chart", chartName, "env", env.Name, "size", len(headManifest))
+	s.logger.Info(
+		"head manifest rendered",
+		"chart",
+		chartName,
+		"env",
+		env.Name,
+		"size",
+		len(headManifest),
+	)
 
 	s.logger.Info("computing diffs", "chart", chartName, "env", env.Name)
 	baseName := domain.DiffLabel(chartName, env.Name, pr.BaseRef)
@@ -435,11 +494,27 @@ func (s *DiffService) diffChartEnv(
 
 	// Compute semantic diff (dyff) - may be empty if dyff not available
 	semanticDiff := s.semanticDiff.ComputeDiff(baseName, headName, baseManifest, headManifest)
-	s.logger.Info("semantic diff computed", "chart", chartName, "env", env.Name, "size", len(semanticDiff))
+	s.logger.Info(
+		"semantic diff computed",
+		"chart",
+		chartName,
+		"env",
+		env.Name,
+		"size",
+		len(semanticDiff),
+	)
 
 	// Always compute unified diff as fallback
 	unifiedDiff := s.unifiedDiff.ComputeDiff(baseName, headName, baseManifest, headManifest)
-	s.logger.Info("unified diff computed", "chart", chartName, "env", env.Name, "size", len(unifiedDiff))
+	s.logger.Info(
+		"unified diff computed",
+		"chart",
+		chartName,
+		"env",
+		env.Name,
+		"size",
+		len(unifiedDiff),
+	)
 
 	var status domain.Status
 	var summary string

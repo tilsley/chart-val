@@ -33,13 +33,12 @@ func TestLoad(t *testing.T) {
 				_ = os.Unsetenv("LOG_LEVEL")
 			},
 			want: Config{
-				Port:                    9000,
-				WebhookSecret:           "test-secret",
-				GitHubAppID:             123456,
-				GitHubInstallationID:    789012,
-				GitHubPrivateKey:        "test-key",
-				LogLevel:                "debug",
-				MaxConcurrentExecutions: 5, // Default
+				Port:                 9000,
+				WebhookSecret:        "test-secret",
+				GitHubAppID:          123456,
+				GitHubInstallationID: 789012,
+				GitHubPrivateKey:     "test-key",
+				LogLevel:             "debug",
 			},
 			wantErr: false,
 		},
@@ -59,67 +58,12 @@ func TestLoad(t *testing.T) {
 				_ = os.Unsetenv("GITHUB_PRIVATE_KEY")
 			},
 			want: Config{
-				Port:                    8080, // Default
-				WebhookSecret:           "test-secret",
-				GitHubAppID:             123456,
-				GitHubInstallationID:    789012,
-				GitHubPrivateKey:        "test-key",
-				LogLevel:                "info", // Default
-				MaxConcurrentExecutions: 5,      // Default
-			},
-			wantErr: false,
-		},
-		{
-			name: "custom MAX_CONCURRENT_EXECUTIONS",
-			setup: func() {
-				_ = os.Setenv("WEBHOOK_SECRET", "test-secret")
-				_ = os.Setenv("GITHUB_APP_ID", "123456")
-				_ = os.Setenv("GITHUB_INSTALLATION_ID", "789012")
-				_ = os.Setenv("GITHUB_PRIVATE_KEY", "test-key")
-				_ = os.Setenv("MAX_CONCURRENT_EXECUTIONS", "10")
-			},
-			cleanup: func() {
-				_ = os.Unsetenv("WEBHOOK_SECRET")
-				_ = os.Unsetenv("GITHUB_APP_ID")
-				_ = os.Unsetenv("GITHUB_INSTALLATION_ID")
-				_ = os.Unsetenv("GITHUB_PRIVATE_KEY")
-				_ = os.Unsetenv("MAX_CONCURRENT_EXECUTIONS")
-			},
-			want: Config{
-				Port:                    8080,
-				WebhookSecret:           "test-secret",
-				GitHubAppID:             123456,
-				GitHubInstallationID:    789012,
-				GitHubPrivateKey:        "test-key",
-				LogLevel:                "info",
-				MaxConcurrentExecutions: 10,
-			},
-			wantErr: false,
-		},
-		{
-			name: "invalid MAX_CONCURRENT_EXECUTIONS falls back to default",
-			setup: func() {
-				_ = os.Setenv("WEBHOOK_SECRET", "test-secret")
-				_ = os.Setenv("GITHUB_APP_ID", "123456")
-				_ = os.Setenv("GITHUB_INSTALLATION_ID", "789012")
-				_ = os.Setenv("GITHUB_PRIVATE_KEY", "test-key")
-				_ = os.Setenv("MAX_CONCURRENT_EXECUTIONS", "not-a-number")
-			},
-			cleanup: func() {
-				_ = os.Unsetenv("WEBHOOK_SECRET")
-				_ = os.Unsetenv("GITHUB_APP_ID")
-				_ = os.Unsetenv("GITHUB_INSTALLATION_ID")
-				_ = os.Unsetenv("GITHUB_PRIVATE_KEY")
-				_ = os.Unsetenv("MAX_CONCURRENT_EXECUTIONS")
-			},
-			want: Config{
-				Port:                    8080,
-				WebhookSecret:           "test-secret",
-				GitHubAppID:             123456,
-				GitHubInstallationID:    789012,
-				GitHubPrivateKey:        "test-key",
-				LogLevel:                "info",
-				MaxConcurrentExecutions: 5, // Falls back to default
+				Port:                 8080, // Default
+				WebhookSecret:        "test-secret",
+				GitHubAppID:          123456,
+				GitHubInstallationID: 789012,
+				GitHubPrivateKey:     "test-key",
+				LogLevel:             "info", // Default
 			},
 			wantErr: false,
 		},
@@ -290,13 +234,6 @@ func TestLoad(t *testing.T) {
 			}
 			if got.LogLevel != tt.want.LogLevel {
 				t.Errorf("Load().LogLevel = %v, want %v", got.LogLevel, tt.want.LogLevel)
-			}
-			if got.MaxConcurrentExecutions != tt.want.MaxConcurrentExecutions {
-				t.Errorf(
-					"Load().MaxConcurrentExecutions = %v, want %v",
-					got.MaxConcurrentExecutions,
-					tt.want.MaxConcurrentExecutions,
-				)
 			}
 		})
 	}

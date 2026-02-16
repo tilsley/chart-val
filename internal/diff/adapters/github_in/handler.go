@@ -13,6 +13,8 @@ import (
 	"github.com/nathantilsley/chart-val/internal/diff/ports"
 )
 
+const maxConcurrentWebhooks = 5
+
 // WebhookHandler handles incoming GitHub webhook events.
 type WebhookHandler struct {
 	useCase       ports.DiffUseCase
@@ -26,13 +28,12 @@ func NewWebhookHandler(
 	uc ports.DiffUseCase,
 	secret string,
 	logger *slog.Logger,
-	maxConcurrent int,
 ) *WebhookHandler {
 	return &WebhookHandler{
 		useCase:       uc,
 		webhookSecret: []byte(secret),
 		logger:        logger,
-		sem:           make(chan struct{}, maxConcurrent),
+		sem:           make(chan struct{}, maxConcurrentWebhooks),
 	}
 }
 
