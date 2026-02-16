@@ -34,9 +34,17 @@ type Container struct {
 }
 
 // NewContainer builds and wires all dependencies.
-func NewContainer(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry) (*Container, error) {
+func NewContainer(
+	cfg config.Config,
+	log *slog.Logger,
+	tel *telemetry.Telemetry,
+) (*Container, error) {
 	// Platform dependencies
-	githubClient, err := ghclient.NewClient(cfg.GitHubAppID, cfg.GitHubInstallationID, cfg.GitHubPrivateKey)
+	githubClient, err := ghclient.NewClient(
+		cfg.GitHubAppID,
+		cfg.GitHubInstallationID,
+		cfg.GitHubPrivateKey,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("creating github client: %w", err)
 	}
@@ -99,7 +107,12 @@ func NewContainer(cfg config.Config, log *slog.Logger, tel *telemetry.Telemetry)
 	)
 
 	// Webhook handler
-	webhookHandler := githubin.NewWebhookHandler(diffService, cfg.WebhookSecret, log)
+	webhookHandler := githubin.NewWebhookHandler(
+		diffService,
+		cfg.WebhookSecret,
+		log,
+		cfg.MaxConcurrentExecutions,
+	)
 
 	return &Container{
 		Config:         cfg,

@@ -33,6 +33,9 @@ type Config struct {
 	ChartDir         string // CHART_DIR (default: "charts"); top-level dir containing charts
 	EnvDir           string // ENV_DIR (default: "env"); subdirectory within chart for env overrides
 	ValuesFileSuffix string // VALUES_FILE_SUFFIX (default: "-values.yaml"); pattern for value files
+
+	// Worker pool (optional)
+	MaxConcurrentExecutions int // MAX_CONCURRENT_EXECUTIONS (default: 5)
 }
 
 // Load reads configuration from environment variables, validates required
@@ -141,6 +144,19 @@ func loadAppConfig(cfg *Config) {
 	cfg.ChartDir = getEnvOrDefault("CHART_DIR", "charts")
 	cfg.EnvDir = getEnvOrDefault("ENV_DIR", "env")
 	cfg.ValuesFileSuffix = getEnvOrDefault("VALUES_FILE_SUFFIX", "-values.yaml")
+	cfg.MaxConcurrentExecutions = parseIntOrDefault("MAX_CONCURRENT_EXECUTIONS", 5)
+}
+
+func parseIntOrDefault(envKey string, defaultValue int) int {
+	v := os.Getenv(envKey)
+	if v == "" {
+		return defaultValue
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return defaultValue
+	}
+	return n
 }
 
 func parseDurationOrDefault(envKey string, defaultValue time.Duration) (time.Duration, error) {

@@ -18,14 +18,21 @@ type WebhookHandler struct {
 	useCase       ports.DiffUseCase
 	webhookSecret []byte
 	logger        *slog.Logger
+	sem           chan struct{}
 }
 
 // NewWebhookHandler creates a new webhook handler.
-func NewWebhookHandler(uc ports.DiffUseCase, secret string, logger *slog.Logger) *WebhookHandler {
+func NewWebhookHandler(
+	uc ports.DiffUseCase,
+	secret string,
+	logger *slog.Logger,
+	maxConcurrent int,
+) *WebhookHandler {
 	return &WebhookHandler{
 		useCase:       uc,
 		webhookSecret: []byte(secret),
 		logger:        logger,
+		sem:           make(chan struct{}, maxConcurrent),
 	}
 }
 
@@ -82,6 +89,8 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		trace.SpanContextFromContext(r.Context()),
 	)
 	go func() {
+		h.sem <- struct{}{}        // acquire worker slot
+		defer func() { <-h.sem }() // release worker slot
 		if err := h.useCase.Execute(ctx, pr); err != nil {
 			h.logger.Error("diff execution failed",
 				"owner", pr.Owner,
