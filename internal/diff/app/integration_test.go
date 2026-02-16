@@ -113,6 +113,11 @@ func TestIntegration_FullDiffFlow(t *testing.T) {
 	prComment := reporter.FormatPRComment(allResults)
 	goldenFile = filepath.Join(goldenDir, "pr-comment.md")
 	compareOrUpdateGolden(t, goldenFile, prComment)
+
+	// Generate unified diff PR comment - using production code
+	prCommentUnified := reporter.FormatPRCommentUnified(allResults)
+	goldenFile = filepath.Join(goldenDir, "pr-comment-unified.md")
+	compareOrUpdateGolden(t, goldenFile, prCommentUnified)
 }
 
 // TestIntegration_NewChart tests the scenario where a chart is being added
@@ -327,6 +332,11 @@ func TestIntegration_ThreeChartsOneChanged(t *testing.T) {
 	prComment := reporter.FormatPRComment(changedResults)
 	goldenFile = filepath.Join(goldenDir, "pr-comment-three-charts.md")
 	compareOrUpdateGolden(t, goldenFile, prComment)
+
+	// Unified diff PR comment for the changed chart
+	prCommentUnified := reporter.FormatPRCommentUnified(changedResults)
+	goldenFile = filepath.Join(goldenDir, "pr-comment-three-charts-unified.md")
+	compareOrUpdateGolden(t, goldenFile, prCommentUnified)
 }
 
 // compareOrUpdateGolden either updates the golden file or compares against it.
