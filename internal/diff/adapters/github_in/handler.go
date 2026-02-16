@@ -81,7 +81,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := trace.ContextWithRemoteSpanContext(context.Background(),
 		trace.SpanContextFromContext(r.Context()),
 	)
-	go func() { //nolint:contextcheck // Intentionally using detached context for async background job
+	go func() {
 		if err := h.useCase.Execute(ctx, pr); err != nil {
 			h.logger.Error("diff execution failed",
 				"owner", pr.Owner,

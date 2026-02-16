@@ -2,228 +2,82 @@
 
 _Your charts, validated before they deploy._
 
-A GitHub App that automatically generates Helm chart diffs for pull requests using the GitHub Checks API.
+A GitHub App that generates Helm chart diffs for pull requests. When a PR modifies files under `charts/`, chart-val renders each chart per environment, computes diffs against `main`, and posts the results as a GitHub Check Run and PR comment.
 
-## Features
+## Architecture
 
-- Automatically detects Helm chart changes in PRs
-- Renders charts with environment-specific values
-- Posts unified diffs as GitHub Check Runs
-- Multi-environment support (staging, prod, etc.)
-- Real Helm template rendering for accurate diffs
-- **Argo CD integration**: Read chart configs from Argo Application manifests (see [docs/ARGO_INTEGRATION.md](docs/ARGO_INTEGRATION.md))
+Built with Hexagonal Architecture (Ports & Adapters). See [ARCHITECTURE.md](ARCHITECTURE.md) for full details.
+
+<!-- TODO: embed docs/architecture/system-architecture diagram here -->
 
 ## Setup
 
-### 1. Prerequisites
+### Prerequisites
 
 - Go 1.24+
-- Helm CLI (for running the app and integration tests)
-- A GitHub App with the following permissions:
-  - **Checks**: Read & Write
-  - **Contents**: Read
-  - **Pull Requests**: Read
+- Helm CLI
+- A GitHub App with permissions: **Checks** (R/W), **Contents** (R), **Pull Requests** (R/W)
 
-### 2. Configuration
-
-**Step 1:** Place your GitHub App private key in the project root:
+### Configuration
 
 ```bash
-# Copy your GitHub App private key to the project root
-cp /path/to/your/key.pem chart-val.pem
+cp /path/to/your/key.pem chart-val.pem   # GitHub App private key
+cp .env.example .env                      # Edit with your credentials
 ```
 
-**Step 2:** Create a `.env` file with your GitHub App credentials:
-
-```bash
-# Copy the example file
-cp .env.example .env
-
-# Edit .env and add your real values:
-# GITHUB_APP_ID=your-app-id
-# GITHUB_INSTALLATION_ID=your-installation-id
-# WEBHOOK_SECRET=your-webhook-secret
-```
-
-Both `chart-val.pem` and `.env` are gitignored and will NOT be committed.
-
-### 3. Chart Configuration
-
-**Option A: Repository Config File (Simple)**
-
-Add a `.chart-val.yaml` file to the root of repositories you want to monitor:
-
-```yaml
-charts:
-  - path: charts/my-app
-    environments:
-      - name: staging
-        valueFiles:
-          - env/staging-values.yaml
-      - name: prod
-        valueFiles:
-          - env/prod-values.yaml
-```
-
-**Option B: Argo CD Integration (Advanced)**
-
-For organizations with many Helm charts managed by Argo CD, chart-val can automatically discover charts from your Argo Application manifests:
-
-```bash
-# Add to .env
-ARGO_APPS_REPO=https://github.com/myorg/gitops
-ARGO_APPS_PATH=argocd/applications
-ARGO_APPS_SYNC_INTERVAL=1h
-```
-
-Benefits:
-- ✅ Single source of truth (Argo CD Applications)
-- ✅ No duplicate configuration in chart repos
-- ✅ Automatic discovery of new environments
-- ✅ Fast indexed lookups (~1ms)
-- ✅ Works with large repos (1000s of apps)
-
-See [docs/ARGO_INTEGRATION.md](docs/ARGO_INTEGRATION.md) for details.
+Required env vars: `GITHUB_APP_ID`, `GITHUB_INSTALLATION_ID`, `WEBHOOK_SECRET`. See [.env.example](.env.example) for all options including Argo CD integration and OpenTelemetry.
 
 ## Development
 
-### Build & Run
-
 ```bash
-# Build the binary
-make build
-
-# Run locally (requires .env configuration)
-make run
-
-# Clean build artifacts
-make clean
-```
-
-### Testing
-
-```bash
-# Run all tests
-make test
-
-# Run tests with verbose output
-make test-verbose
-
-# Run integration tests only (requires helm)
-make test-integration
-
-# Regenerate integration test golden files
-make test-integration-update
-```
-
-### Code Quality
-
-```bash
-# Format code
-make fmt
-
-# Run go vet
-make vet
-
-# Run all checks (fmt + vet)
-make lint
+make build        # Build server binary
+make run          # Run locally (loads .env)
+make test         # Run all tests
+make lint         # Format + vet + golangci-lint + go-arch-lint
 ```
 
 ### Manual Testing
 
-You can test chart-val locally by simulating GitHub webhook requests:
-
-#### 1. Ensure you have a `.env` file configured (see Configuration section)
-
-#### 2. Build the CLI tool
-
 ```bash
-make build-cli
+make build-cli    # Build webhook simulator
+make run          # Terminal 1: start server
+./bin/chart-val-cli -owner myorg -repo myrepo -pr 123 -head feat/branch  # Terminal 2
 ```
 
-#### 3. Run the server
+See `./bin/chart-val-cli -help` for all CLI options.
 
-**Terminal 1:**
-```bash
-make run
-```
-
-#### 4. Send a test webhook
-
-**Terminal 2:**
-```bash
-./bin/chart-val-cli \
-  -owner myorg \
-  -repo myrepo \
-  -pr 123 \
-  -head feat/my-feature
-```
-
-Or with a specific SHA:
-```bash
-./bin/chart-val-cli \
-  -owner myorg \
-  -repo myrepo \
-  -pr 123 \
-  -head feat/my-feature \
-  -sha abc123def456
-```
-
-The CLI tool will:
-- Construct a valid GitHub `pull_request` webhook payload
-- Sign it with HMAC SHA256 using the secret "test"
-- POST it to `http://localhost:8080/webhook`
-- Display the server's response
-
-The server will then process the PR and post Check Runs to GitHub.
-
-#### CLI Options
+### Integration & E2E Tests
 
 ```bash
--owner string         GitHub repository owner (required)
--repo string          GitHub repository name (required)
--pr int               Pull request number (required)
--head string          Head branch name (required)
--sha string           Head commit SHA (default: dummy SHA for testing)
--base string          Base branch (default "main")
--action string        PR action (default "synchronize")
--url string           Webhook URL (default "http://localhost:8080/webhook")
--secret string        Webhook secret (must match your .env WEBHOOK_SECRET)
--installation-id int  GitHub App installation ID (from your .env)
+make test-integration         # Run integration tests (requires helm)
+make test-integration-update  # Regenerate golden files
 ```
+
+See [test/e2e/](test/e2e/) for end-to-end test documentation.
 
 ## How It Works
 
-1. **Webhook Reception**: Receives `pull_request` events from GitHub
-2. **Config Loading**: Reads `.chart-val.yaml` from the repository
-3. **Chart Fetching**: Downloads base (main) and head (PR) chart versions via GitHub API
-4. **Rendering**: Runs `helm template` for each environment
-5. **Diff Generation**: Computes unified diffs between rendered manifests
-6. **Reporting**: Posts results as GitHub Check Runs (one per chart/environment)
+1. Receives `pull_request` webhook from GitHub
+2. Detects changed charts via the GitHub API
+3. Discovers environments per chart (Argo CD apps or `env/` directory scan)
+4. Fetches base and head chart files from GitHub
+5. Renders each environment with `helm template`
+6. Computes diffs (dyff for semantic YAML, line-diff fallback)
+7. Posts results as a Check Run and PR comment
 
-## Architecture
+## Configuration Options
 
-Built using Hexagonal Architecture (Ports & Adapters):
+| Category | Env Var | Default | Description |
+|----------|---------|---------|-------------|
+| App Identity | `APP_NAME` | `chart-val` | Check run name, comment marker, OTel service |
+| | `APP_URL` | _(empty)_ | Footer link in PR comments |
+| Chart Layout | `CHART_DIR` | `charts` | Top-level chart directory |
+| | `ENV_DIR` | `env` | Environment overrides subdirectory |
+| | `VALUES_FILE_SUFFIX` | `-values.yaml` | Value file pattern |
+| Argo CD | `ARGO_APPS_REPO` | _(disabled)_ | Git repo with Argo Application manifests |
+| Observability | `OTEL_ENABLED` | `false` | Enable OpenTelemetry metrics/traces |
 
-- **Domain**: Pure business logic (`internal/diff/domain/`)
-- **Application**: Use cases and orchestration (`internal/diff/app/`)
-- **Ports**: Interfaces for I/O (`internal/diff/ports/`)
-- **Adapters**: External integrations (`internal/diff/adapters/`)
-  - `github_in`: Webhook handler
-  - `github_out`: Check Run reporter
-  - `helm_cli`: Helm renderer
-  - `source_ctrl`: Chart file fetcher
-  - `repo_cfg`: Manifest loader
-
-## Integration Testing
-
-The project includes end-to-end integration tests that use real Helm charts:
-
-- **Test Location**: `internal/diff/app/integration_test.go`
-- **Fixtures**: Sample charts in `testdata/{base,head}/my-app/`
-- **Golden Files**: Expected outputs in `testdata/golden/*.md`
-
-The golden files serve as both test assertions and living documentation of the tool's output format.
+See [.env.example](.env.example) for the complete list.
 
 ## License
 

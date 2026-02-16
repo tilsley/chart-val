@@ -1,222 +1,95 @@
-# Architecture & Implementation Details
+# Architecture
 
-## Diffing Implementation
+chart-val follows **Hexagonal Architecture** (Ports & Adapters). The core business logic has no knowledge of GitHub, Helm, or any external system — it depends only on port interfaces.
 
-### Hybrid Approach: dyff + go-difflib
+## Layers
 
-We use a **hybrid diffing strategy** that automatically uses the best tool available:
-
-1. **Primary: dyff CLI** ([homeport/dyff](https://github.com/homeport/dyff))
-   - Kubernetes-aware semantic YAML diffing
-   - Shows structured field paths (e.g., `spec.replicas`)
-   - Resource type annotations (e.g., `apps/v1/Deployment/my-app`)
-   - Semantic understanding (e.g., "one document added")
-   - Better readability for Kubernetes manifests
-
-2. **Fallback: go-difflib** ([pmezard/go-difflib](https://github.com/pmezard/go-difflib))
-   - Traditional line-by-line unified diff
-   - No external dependencies required
-   - Always available as a fallback
-
-```go
-func computeDiff(baseName, headName string, base, head []byte) string {
-    // Try dyff first (better for YAML/Kubernetes manifests)
-    if diff, ok := tryDyffDiff(baseName, headName, base, head); ok {
-        return diff
-    }
-
-    // Fallback to line-based diff
-    return lineDiff(baseName, headName, base, head)
-}
+```
+cmd/chart-val/          Composition root — wires adapters to ports
+internal/platform/      Cross-cutting: config, telemetry
+internal/diff/domain/   Business types (PRContext, DiffResult, ChartConfig)
+internal/diff/ports/    Interfaces (driving + driven)
+internal/diff/app/      Use-case orchestration (DiffService)
+internal/diff/adapters/ Implementations of ports
 ```
 
-### Installation
+## Ports
 
-**dyff (optional but recommended):**
-```bash
-# macOS
-brew install dyff
+### Driving (Input)
 
-# Linux
-wget -qO- https://github.com/homeport/dyff/releases/latest/download/dyff_linux_amd64.tar.gz | tar xz
-sudo mv dyff /usr/local/bin/
+| Port | Description |
+|------|-------------|
+| `DiffUseCase` | Entry point — receives a `PRContext`, runs the full diff flow |
 
-# Or use Go
-go install github.com/homeport/dyff/cmd/dyff@latest
+### Driven (Output)
+
+| Port | Adapter(s) | Description |
+|------|-----------|-------------|
+| `ChangedChartsPort` | `pr_files` | Detects which charts changed in a PR via GitHub API |
+| `ReportingPort` | `github_out` | Creates Check Runs and posts PR comments |
+| `EnvironmentConfigPort` | `environment_config/argo`, `environment_config/filesystem` | Discovers environments and value files |
+| `SourceControlPort` | `source_ctrl` | Fetches chart files from GitHub at a given ref |
+| `RendererPort` | `helm_cli` | Runs `helm template` |
+| `DiffPort` | `dyff_diff`, `line_diff` | Computes diffs between rendered manifests |
+
+## Execution Flow
+
+Per pull request event, `DiffService.Execute()` calls ports in this order:
+
+```
+① ChangedChartsPort.GetChangedCharts()     — which charts changed?
+② ReportingPort.CreateInProgressCheck()     — open a check run
+③ EnvironmentConfigPort.GetEnvironmentConfig() — per chart: what envs/values?
+④ SourceControlPort.FetchChartFiles()       — per env: fetch base + head files
+⑤ RendererPort.Render()                     — per env: helm template
+⑥ DiffPort.ComputeDiff()                    — per env: compute diff
+⑦ ReportingPort.UpdateCheckWithResults()    — post results
+   ReportingPort.PostComment()
 ```
 
-**Benefits:**
-- ✅ Works out-of-the-box with line-based diff
-- ✅ Better diffs if dyff is installed
-- ✅ No hard dependency - graceful degradation
-- ✅ Kubernetes-aware semantic diffing with dyff
-- ✅ Easy to test both modes
+Steps ③–⑥ repeat per chart and per environment.
 
-**Trade-offs:**
-- ⚠️ dyff output format may change between versions
-- ⚠️ Subprocess overhead (minimal, ~10-50ms per diff)
+## Dependency Rules
 
-## Code Quality & Linting
+| Layer | May Import |
+|-------|-----------|
+| Domain | stdlib only |
+| Ports | Domain |
+| App | Domain, Ports |
+| Adapters | Domain, Ports, Platform, external libs |
+| Cmd | Everything (composition root) |
 
-### Linters Configured
+**Forbidden:** Domain → Adapters, Ports → Adapters, App → Adapters, Adapter → Adapter.
 
-#### 1. golangci-lint
-Comprehensive Go linter aggregator with 30+ linters enabled:
+Enforced by [go-arch-lint](https://github.com/fe3dback/go-arch-lint) — see `.go-arch-lint.yml`.
 
-**Categories:**
-- ✅ Error checking (errcheck, errorlint, goerr113)
-- ✅ Code style (revive, stylecheck, gocritic)
-- ✅ Security (gosec)
-- ✅ Performance (prealloc, gocritic)
-- ✅ Best practices (unparam, unconvert, wastedassign)
+## Composite Strategy: Environment Config
 
-**Run:**
-```bash
-make lint-go
-```
+The service uses a fallback chain to resolve environment configuration:
 
-#### 2. go-arch-lint
-Hexagonal architecture enforcement:
+1. **Argo CD adapter** — queries Argo Application manifests for chart deployments
+2. **Filesystem adapter** — scans the chart's `env/` directory for value files
+3. **Default** — returns a "base" environment (chart is not deployed)
 
-**Rules:**
-- ✅ Domain cannot import adapters
-- ✅ Domain cannot import platform
-- ✅ Ports cannot import adapters
-- ✅ App cannot import adapters directly
-- ✅ Adapters are independent (no cross-adapter imports)
+This logic lives in `service.go:getChartConfig()`.
 
-**Run:**
-```bash
-make lint-arch
-```
+## Diffing Strategy
 
-### All Linters
+Two `DiffPort` implementations are composed:
+
+1. **dyff** (primary) — Kubernetes-aware semantic YAML diff via the [dyff CLI](https://github.com/homeport/dyff)
+2. **line_diff** (fallback) — traditional unified text diff via go-difflib
+
+The service tries dyff first and falls back to line_diff if dyff is unavailable or fails.
+
+## Code Quality
 
 ```bash
-# Run all linters (fmt, vet, golangci-lint, go-arch-lint)
-make lint
+make lint           # golangci-lint + go-arch-lint + fmt + vet
+make test           # All unit + integration tests
+make lint-fix       # Auto-fix lint issues where possible
 ```
 
-## Hexagonal Architecture
+## Observability
 
-### Layers
-
-```
-                    ┌─────────────────┐
-                    │      cmd/       │
-                    │  (Entry Point)  │
-                    │ Composition Root│
-                    └────────┬────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              │                             │
-              ▼                             ▼
-     ┌────────────────┐           ┌────────────────┐
-     │  Adapters IN   │           │  Adapters OUT  │
-     │                │           │                │
-     │  github_in     │           │  github_out    │
-     │  (webhook)     │           │  source_ctrl   │
-     │                │           │  helm_cli      │
-     └───────┬────────┘           └────────┬───────┘
-             │                             │
-             │    ┌──────────────────┐     │
-             └───▶│      Ports       │◀────┘
-                  │  (Interfaces)    │
-                  │                  │
-                  │  DiffUseCase     │
-                  │  ReportingPort   │
-                  │  SourceCtrlPort  │
-                  │  RendererPort    │
-                  └────────┬─────────┘
-                           │
-                           ▼
-                  ┌──────────────────┐
-                  │   App Layer      │
-                  │   (service.go)   │
-                  │                  │
-                  │  Use case logic  │
-                  │  Orchestration   │
-                  └────────┬─────────┘
-                           │
-                           ▼
-                  ┌──────────────────┐
-                  │     Domain       │
-                  │ (Business Types) │
-                  │                  │
-                  │  PRContext       │
-                  │  DiffResult      │
-                  │  EnvironmentConfig│
-                  └──────────────────┘
-```
-
-**Key Points:**
-- Domain is pure business types (no dependencies)
-- App layer orchestrates use cases using domain types
-- Ports define interfaces at the application boundary
-- Adapters implement ports (dependency inversion)
-- CMD wires everything together (composition root)
-
-### Dependencies
-
-**Allowed:**
-- Domain → (nothing except stdlib)
-- Ports → Domain
-- App → Domain, Ports
-- Adapters → Domain, Ports, Platform, External libs
-- Cmd → Everything (composition root)
-
-**Forbidden:**
-- Domain ↛ Adapters ❌
-- Domain ↛ Platform ❌
-- Ports ↛ Adapters ❌
-- App ↛ Adapters ❌
-- Adapters ↛ Other Adapters ❌
-
-### Enforcement
-
-Architecture rules are enforced via `go-arch-lint` and will fail CI if violated.
-
-## Installation & Setup
-
-### Prerequisites
-
-```bash
-# Install golangci-lint
-brew install golangci-lint
-
-# Install go-arch-lint
-go install github.com/fe3dback/go-arch-lint@latest
-```
-
-### Running Quality Checks
-
-```bash
-# Format code
-make fmt
-
-# Run all linters
-make lint
-
-# Generate coverage report
-make coverage
-
-# Full quality check
-make lint && make test
-```
-
-## Future Improvements
-
-### Diffing
-- [ ] Add YAML normalization option (sort keys, normalize whitespace)
-- [ ] Add resource sorting option (group by kind, sort alphabetically)
-- [ ] Add semantic diff for Kubernetes resources (ignore order-independent fields)
-- [ ] Add diff statistics (lines changed, resources added/removed/modified)
-- [ ] Add diff filtering (ignore specific fields like timestamps, hashes)
-
-### Architecture
-- [ ] Add metrics/observability port for telemetry
-- [ ] Add caching port for rendered manifests (avoid re-rendering on sync)
-- [ ] Consider splitting adapters into separate packages per bounded context
-- [ ] Add plugin system for custom diff formatters (JSON, YAML, HTML)
-- [ ] Add event sourcing for audit trail of all diffs
-- [ ] Add notification port for Slack/email alerts
+OpenTelemetry metrics and traces are available when `OTEL_ENABLED=true`. The OTel SDK auto-discovers standard environment variables (`OTEL_EXPORTER_OTLP_ENDPOINT`, etc.). See [.env.example](.env.example).

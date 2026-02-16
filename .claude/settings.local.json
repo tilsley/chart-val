@@ -44,7 +44,19 @@
       "Bash(golangci-lint run:*)",
       "Bash(golangci-lint:*)",
       "Bash(grep:*)",
-      "WebFetch(domain:golangci-lint.run)"
+      "WebFetch(domain:golangci-lint.run)",
+      "Bash(gofmt:*)",
+      "Bash(golines:*)",
+      "Bash(go get:*)",
+      "WebFetch(domain:hub.docker.com)",
+      "Bash(go install:*)",
+      "Bash(git -C /Users/nathantilsley/repos/chart-val status)",
+      "Bash(git -C /Users/nathantilsley/repos/chart-val diff)",
+      "Bash(git -C /Users/nathantilsley/repos/chart-val log --oneline -5)",
+      "Bash(git -C /Users/nathantilsley/repos/chart-val add .env.example Makefile cmd/chart-val/container.go cmd/chart-val/main.go internal/diff/adapters/environment_config/argo/adapter.go internal/diff/adapters/environment_config/argo/adapter_test.go internal/diff/adapters/environment_config/filesystem/adapter.go internal/diff/adapters/github_out/adapter.go internal/diff/adapters/pr_files/adapter.go internal/diff/app/integration_test.go internal/diff/app/service.go internal/diff/app/service_test.go internal/diff/app/testdata/golden/pr-comment-three-charts.md internal/diff/app/testdata/golden/pr-comment.md internal/diff/domain/repository.go internal/diff/domain/repository_test.go internal/platform/config/config.go internal/platform/telemetry/telemetry.go test/e2e/e2e_test.go)",
+      "Bash(brew uninstall:*)",
+      "Bash(hash:*)",
+      "Bash(git status:*)"
     ]
   }
 }
