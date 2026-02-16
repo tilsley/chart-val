@@ -1,0 +1,32 @@
+replicaCount: 3
+
+image:
+  tag: "1.21.0"
+
+resources:
+  limits:
+    cpu: "1"
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+env:
+  LOG_LEVEL: "warn"
+  ENVIRONMENT: "production"
+  MONITORING_ENABLED: "true"
+  HIGH_AVAILABILITY: "true"
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+
+nodeSelector:
+  node-type: production
+
+tolerations:
+  - key: "production"
+    operator: "Equal"
+    value: "true"
+    effect: "NoSchedule"

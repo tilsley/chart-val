@@ -1,0 +1,12 @@
+charts:
+  - path: charts/sample-app
+    environments:
+      - name: dev
+        valueFiles:
+          - env/dev-values.yaml
+      - name: staging
+        valueFiles:
+          - env/stg-values.yaml
+      - name: production
+        valueFiles:
+          - env/prd-values.yaml
