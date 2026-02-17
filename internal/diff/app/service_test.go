@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -18,7 +19,8 @@ import (
 // Mock adapters for testing
 
 type mockSourceControl struct {
-	charts map[string]bool // map of "ref:chartPath" -> exists
+	charts map[string]bool  // map of "ref:chartPath" -> exists
+	errors map[string]error // map of "ref:chartPath" -> non-NotFound error
 }
 
 func (m *mockSourceControl) FetchChartFiles(
@@ -26,6 +28,11 @@ func (m *mockSourceControl) FetchChartFiles(
 	_, _, ref, chartPath string,
 ) (string, func(), error) {
 	key := ref + ":" + chartPath
+	if m.errors != nil {
+		if err, ok := m.errors[key]; ok {
+			return "", nil, err
+		}
+	}
 	if !m.charts[key] {
 		return "", nil, domain.NewNotFoundError(chartPath, ref)
 	}
@@ -35,18 +42,20 @@ func (m *mockSourceControl) FetchChartFiles(
 
 type mockChangedCharts struct {
 	charts []domain.ChangedChart
+	err    error
 }
 
 func (m *mockChangedCharts) GetChangedCharts(
 	_ context.Context,
 	_ domain.PRContext,
 ) ([]domain.ChangedChart, error) {
-	return m.charts, nil
+	return m.charts, m.err
 }
 
 type mockEnvConfig struct {
 	config  domain.ChartConfig            // default config
 	configs map[string]domain.ChartConfig // per-chart configs
+	errors  map[string]error              // per-chart error injection
 }
 
 func (m *mockEnvConfig) GetEnvironmentConfig(
@@ -54,6 +63,11 @@ func (m *mockEnvConfig) GetEnvironmentConfig(
 	_ domain.PRContext,
 	chartName string,
 ) (domain.ChartConfig, error) {
+	if m.errors != nil {
+		if err, ok := m.errors[chartName]; ok {
+			return domain.ChartConfig{}, err
+		}
+	}
 	if m.configs != nil {
 		if cfg, ok := m.configs[chartName]; ok {
 			return cfg, nil
@@ -64,9 +78,15 @@ func (m *mockEnvConfig) GetEnvironmentConfig(
 
 type mockRenderer struct {
 	manifests map[string]string // chartDir -> rendered manifest
+	errors    map[string]error  // chartDir -> error
 }
 
 func (m *mockRenderer) Render(_ context.Context, chartDir string, _ []string) ([]byte, error) {
+	if m.errors != nil {
+		if err, ok := m.errors[chartDir]; ok {
+			return nil, err
+		}
+	}
 	if m.manifests != nil {
 		if content, ok := m.manifests[chartDir]; ok {
 			return []byte(content), nil
@@ -76,12 +96,18 @@ func (m *mockRenderer) Render(_ context.Context, chartDir string, _ []string) ([
 }
 
 type mockReporter struct {
-	results      []domain.DiffResult
-	checkRunID   int64
-	commentCount int
+	results        []domain.DiffResult
+	checkRunID     int64
+	commentCount   int
+	createCheckErr error
+	updateCheckErr error
+	postCommentErr error
 }
 
 func (m *mockReporter) CreateInProgressCheck(_ context.Context, _ domain.PRContext) (int64, error) {
+	if m.createCheckErr != nil {
+		return 0, m.createCheckErr
+	}
 	m.checkRunID++
 	return m.checkRunID, nil
 }
@@ -93,7 +119,7 @@ func (m *mockReporter) UpdateCheckWithResults(
 	results []domain.DiffResult,
 ) error {
 	m.results = append(m.results, results...)
-	return nil
+	return m.updateCheckErr
 }
 
 func (m *mockReporter) PostComment(
@@ -101,6 +127,9 @@ func (m *mockReporter) PostComment(
 	_ domain.PRContext,
 	_ []domain.DiffResult,
 ) error {
+	if m.postCommentErr != nil {
+		return m.postCommentErr
+	}
 	m.commentCount++
 	return nil
 }
@@ -436,6 +465,433 @@ func TestExtractChartNames(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// --- Execute() error path tests ---
+
+func TestExecute_GetChangedChartsError(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{}, &mockChangedCharts{err: errors.New("API failure")},
+		nil, &mockEnvConfig{}, &mockRenderer{}, &mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	err := svc.Execute(context.Background(), pr)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "getting changed charts") {
+		t.Errorf("expected error wrapping 'getting changed charts', got: %v", err)
+	}
+}
+
+func TestExecute_CreateInProgressCheckError(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{},
+		&mockChangedCharts{
+			charts: []domain.ChangedChart{{Name: "my-chart", Path: "charts/my-chart"}},
+		},
+		nil,
+		&mockEnvConfig{},
+		&mockRenderer{},
+		&mockReporter{createCheckErr: errors.New("GitHub 500")},
+		&mockDiff{},
+		&mockDiff{},
+		logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts",
+		"chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	err := svc.Execute(context.Background(), pr)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "creating in-progress check") {
+		t.Errorf("expected error wrapping 'creating in-progress check', got: %v", err)
+	}
+}
+
+func TestExecute_GetChartConfigError(t *testing.T) {
+	reporter := &mockReporter{}
+	svc := NewDiffService(
+		&mockSourceControl{},
+		&mockChangedCharts{
+			charts: []domain.ChangedChart{{Name: "my-chart", Path: "charts/my-chart"}},
+		},
+		nil,
+		&mockEnvConfig{errors: map[string]error{"my-chart": errors.New("config fail")}},
+		&mockRenderer{},
+		reporter,
+		&mockDiff{},
+		&mockDiff{},
+		logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts",
+		"chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	err := svc.Execute(context.Background(), pr)
+	if err != nil {
+		t.Fatalf("expected nil error (config error is logged + continue), got: %v", err)
+	}
+	if len(reporter.results) != 0 {
+		t.Errorf("expected 0 results (processChart never called), got %d", len(reporter.results))
+	}
+}
+
+func TestExecute_UpdateCheckError(t *testing.T) {
+	reporter := &mockReporter{updateCheckErr: errors.New("GH error")}
+	svc := NewDiffService(
+		&mockSourceControl{charts: map[string]bool{
+			"main:charts/my-chart": true,
+			"feat:charts/my-chart": true,
+		}},
+		&mockChangedCharts{
+			charts: []domain.ChangedChart{{Name: "my-chart", Path: "charts/my-chart"}},
+		},
+		nil,
+		&mockEnvConfig{config: domain.ChartConfig{
+			Path: "charts/my-chart",
+			Environments: []domain.EnvironmentConfig{
+				{Name: "prod", ValueFiles: []string{"env/prod.yaml"}},
+			},
+		}},
+		&mockRenderer{},
+		reporter,
+		&mockDiff{},
+		&mockDiff{},
+		logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts",
+		"chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	err := svc.Execute(context.Background(), pr)
+	if err != nil {
+		t.Fatalf("expected nil error (update check error is only logged), got: %v", err)
+	}
+}
+
+func TestExecute_PostCommentError(t *testing.T) {
+	reporter := &mockReporter{postCommentErr: errors.New("rate limited")}
+	svc := NewDiffService(
+		&mockSourceControl{charts: map[string]bool{
+			"main:charts/my-chart": true,
+			"feat:charts/my-chart": true,
+		}},
+		&mockChangedCharts{
+			charts: []domain.ChangedChart{{Name: "my-chart", Path: "charts/my-chart"}},
+		},
+		nil,
+		&mockEnvConfig{config: domain.ChartConfig{
+			Path: "charts/my-chart",
+			Environments: []domain.EnvironmentConfig{
+				{Name: "prod", ValueFiles: []string{"env/prod.yaml"}},
+			},
+		}},
+		&mockRenderer{manifests: map[string]string{
+			"main:charts/my-chart": "replicas: 1",
+			"feat:charts/my-chart": "replicas: 3",
+		}},
+		reporter,
+		&mockDiff{},
+		&mockDiff{},
+		logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts",
+		"chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	err := svc.Execute(context.Background(), pr)
+	if err != nil {
+		t.Fatalf("expected nil error (post comment error is only logged), got: %v", err)
+	}
+	if reporter.commentCount != 0 {
+		t.Errorf("expected 0 comments (PostComment failed), got %d", reporter.commentCount)
+	}
+}
+
+// --- getChartConfig() path tests ---
+
+func TestGetChartConfig_ArgoSuccess(t *testing.T) {
+	argoConfig := domain.ChartConfig{
+		Path: "charts/my-chart",
+		Environments: []domain.EnvironmentConfig{
+			{Name: "staging", ValueFiles: []string{"env/staging.yaml"}},
+			{Name: "prod", ValueFiles: []string{"env/prod.yaml"}},
+		},
+	}
+	svc := NewDiffService(
+		&mockSourceControl{}, &mockChangedCharts{},
+		&mockEnvConfig{config: argoConfig}, // argoEnvConfig
+		&mockEnvConfig{},                   // fsEnvConfig (should not be reached)
+		&mockRenderer{}, &mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	config, err := svc.getChartConfig(context.Background(), pr, "my-chart")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(config.Environments) != 2 {
+		t.Errorf("expected 2 environments from argo, got %d", len(config.Environments))
+	}
+}
+
+func TestGetChartConfig_FilesystemError(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{}, &mockChangedCharts{},
+		nil, // no argo
+		&mockEnvConfig{errors: map[string]error{"my-chart": errors.New("fs error")}},
+		&mockRenderer{}, &mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	_, err := svc.getChartConfig(context.Background(), pr, "my-chart")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "discovering environments") {
+		t.Errorf("expected error wrapping 'discovering environments', got: %v", err)
+	}
+}
+
+func TestGetChartConfig_DefaultFallback(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{}, &mockChangedCharts{},
+		nil, // no argo
+		&mockEnvConfig{config: domain.ChartConfig{Path: "charts/my-chart"}}, // empty envs
+		&mockRenderer{}, &mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feat", HeadSHA: "abc",
+	}
+
+	config, err := svc.getChartConfig(context.Background(), pr, "my-chart")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(config.Environments) != 1 {
+		t.Fatalf("expected 1 default environment, got %d", len(config.Environments))
+	}
+	if config.Environments[0].Name != "default" {
+		t.Errorf("expected 'default' environment, got %q", config.Environments[0].Name)
+	}
+	if len(config.Environments[0].ValueFiles) != 0 {
+		t.Errorf(
+			"expected no value files for default env, got %v",
+			config.Environments[0].ValueFiles,
+		)
+	}
+}
+
+// --- processChart() path tests ---
+
+func TestProcessChart_HeadFetchError(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{
+			charts: map[string]bool{"main:charts/test-chart": true},
+			errors: map[string]error{"feature:charts/test-chart": errors.New("network error")},
+		},
+		&mockChangedCharts{}, nil, &mockEnvConfig{},
+		&mockRenderer{}, &mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+	}
+	config := domain.ChartConfig{
+		Path: "charts/test-chart",
+		Environments: []domain.EnvironmentConfig{
+			{Name: "prod", ValueFiles: []string{"env/prod.yaml"}},
+		},
+	}
+
+	results := svc.processChart(context.Background(), pr, config)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != domain.StatusError {
+		t.Errorf("expected StatusError, got %v", results[0].Status)
+	}
+	if !strings.Contains(results[0].Summary, "Error fetching head chart") {
+		t.Errorf(
+			"expected summary containing 'Error fetching head chart', got: %s",
+			results[0].Summary,
+		)
+	}
+}
+
+func TestProcessChart_MessageOnlyEnv(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{charts: map[string]bool{
+			"main:charts/test-chart":    true,
+			"feature:charts/test-chart": true,
+		}},
+		&mockChangedCharts{}, nil, &mockEnvConfig{},
+		&mockRenderer{}, &mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+	}
+	config := domain.ChartConfig{
+		Path:         "charts/test-chart",
+		Environments: []domain.EnvironmentConfig{{Name: "disabled-env", Message: "Not deployed"}},
+	}
+
+	results := svc.processChart(context.Background(), pr, config)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != domain.StatusSuccess {
+		t.Errorf("expected StatusSuccess, got %v", results[0].Status)
+	}
+	if results[0].Summary != "Not deployed" {
+		t.Errorf("expected summary 'Not deployed', got: %s", results[0].Summary)
+	}
+}
+
+func TestProcessChart_DiffChartEnvError(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{charts: map[string]bool{
+			"main:charts/test-chart":    true,
+			"feature:charts/test-chart": true,
+		}},
+		&mockChangedCharts{}, nil, &mockEnvConfig{},
+		&mockRenderer{errors: map[string]error{
+			"feature:charts/test-chart": errors.New("helm fail"),
+		}},
+		&mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+	}
+	config := domain.ChartConfig{
+		Path: "charts/test-chart",
+		Environments: []domain.EnvironmentConfig{
+			{Name: "prod", ValueFiles: []string{"env/prod.yaml"}},
+		},
+	}
+
+	results := svc.processChart(context.Background(), pr, config)
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Status != domain.StatusError {
+		t.Errorf("expected StatusError, got %v", results[0].Status)
+	}
+	if !strings.Contains(results[0].Summary, "helm fail") {
+		t.Errorf("expected summary containing 'helm fail', got: %s", results[0].Summary)
+	}
+}
+
+// --- diffChartEnv() path tests ---
+
+func TestDiffChartEnv_HeadRenderError(t *testing.T) {
+	svc := NewDiffService(
+		&mockSourceControl{}, &mockChangedCharts{},
+		nil, &mockEnvConfig{},
+		&mockRenderer{errors: map[string]error{"headDir": errors.New("template error")}},
+		&mockReporter{},
+		&mockDiff{}, &mockDiff{}, logger.New("error"),
+		noopmetric.NewMeterProvider().Meter("test"),
+		nooptrace.NewTracerProvider().Tracer("test"),
+		"charts", "chart_val",
+	)
+
+	pr := domain.PRContext{
+		Owner: "o", Repo: "r", PRNumber: 1,
+		BaseRef: "main", HeadRef: "feature", HeadSHA: "abc",
+	}
+	env := domain.EnvironmentConfig{Name: "prod", ValueFiles: []string{"env/prod.yaml"}}
+
+	_, err := svc.diffChartEnv(
+		context.Background(),
+		pr,
+		"test-chart",
+		"baseDir",
+		"headDir",
+		true,
+		env,
+	)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to render PR changes") {
+		t.Errorf("expected error wrapping 'failed to render PR changes', got: %v", err)
 	}
 }
 
