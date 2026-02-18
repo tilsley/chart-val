@@ -1,0 +1,5 @@
+apiVersion: v2
+name: e2e-test-chart
+description: E2E test chart
+version: 1.0.0
+type: application
