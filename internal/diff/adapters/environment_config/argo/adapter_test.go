@@ -4,10 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/nathantilsley/chart-val/internal/diff/domain"
 )
@@ -187,7 +185,7 @@ func TestExtractFromFolderStructure(t *testing.T) {
 			t.Parallel()
 
 			adapter := &Adapter{
-				localPath:     tmpDir,
+				repoPath:      tmpDir,
 				folderPattern: tt.pattern,
 				logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
 			}
@@ -242,7 +240,7 @@ func TestRebuildIndex_ContinuesOnErrors(t *testing.T) {
 	}()
 
 	adapter := &Adapter{
-		localPath:     tmpDir,
+		repoPath:      tmpDir,
 		folderPattern: "{chartName}/{envName}",
 		index:         make(map[string][]AppData),
 		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -287,7 +285,7 @@ func TestRebuildIndex(t *testing.T) {
 	}
 
 	adapter := &Adapter{
-		localPath:     tmpDir,
+		repoPath:      tmpDir,
 		folderPattern: "{chartName}/{envName}",
 		index:         make(map[string][]AppData),
 		logger:        slog.New(slog.NewTextHandler(os.Stderr, nil)),
@@ -391,7 +389,11 @@ func TestGetEnvironmentConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			config, err := adapter.GetEnvironmentConfig(context.Background(), domain.PRContext{}, tt.chartName)
+			config, err := adapter.GetEnvironmentConfig(
+				context.Background(),
+				domain.PRContext{},
+				tt.chartName,
+			)
 			if err != nil {
 				t.Fatalf("GetEnvironmentConfig failed: %v", err)
 			}
@@ -422,67 +424,11 @@ func TestGetEnvironmentConfig(t *testing.T) {
 	}
 }
 
-func TestNew(t *testing.T) {
-	t.Parallel()
-
-	// This test requires git to be available
-	tmpDir := t.TempDir()
-	repoDir := filepath.Join(tmpDir, "test-repo")
-
-	// Copy testdata to create a git repo
-	testdataPath := filepath.Join("testdata", "repos", "single-env")
-	if err := copyDir(testdataPath, repoDir); err != nil {
-		t.Fatalf("failed to copy testdata: %v", err)
-	}
-
-	// Initialize git repo
-	cmds := [][]string{
-		{"git", "init"},
-		{"git", "config", "user.email", "test@example.com"},
-		{"git", "config", "user.name", "Test User"},
-		{"git", "add", "."},
-		{"git", "commit", "-m", "Initial commit"},
-	}
-
-	for _, cmd := range cmds {
-		execCmd := execCommand(cmd[0], cmd[1:]...)
-		execCmd.Dir = repoDir
-		if output, err := execCmd.CombinedOutput(); err != nil {
-			t.Fatalf("git command %v failed: %v\noutput: %s", cmd, err, output)
-		}
-	}
-
-	// Test New with local "clone"
-	cloneDir := filepath.Join(tmpDir, "clone")
-	adapter, err := New(
-		repoDir, // Use file:// URL for local git repo
-		cloneDir,
-		1*time.Hour,
-		"{chartName}/{envName}",
-		slog.New(slog.NewTextHandler(os.Stderr, nil)),
-		"charts",
-	)
-	if err != nil {
-		t.Fatalf("New failed: %v", err)
-	}
-	defer adapter.Stop()
-
-	// Verify adapter was initialized correctly
-	if len(adapter.index) != 1 {
-		t.Errorf("expected 1 chart in index, got %d", len(adapter.index))
-	}
-
-	if apps, exists := adapter.index["my-app"]; !exists {
-		t.Errorf("my-app not found in index")
-	} else if len(apps) != 1 {
-		t.Errorf("expected 1 environment for my-app, got %d", len(apps))
-	}
-}
-
 // Helper functions
 
 func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsSubstring(s, substr))
+	return len(s) >= len(substr) &&
+		(s == substr || len(s) > len(substr) && containsSubstring(s, substr))
 }
 
 func containsSubstring(s, substr string) bool {
@@ -533,5 +479,3 @@ func copyDir(src, dst string) error {
 		return os.WriteFile(targetPath, data, 0o600)
 	})
 }
-
-var execCommand = exec.Command // For potential test mocking

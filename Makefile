@@ -153,7 +153,7 @@ test-e2e-local:
 	@if [ -z "$$GITHUB_PRIVATE_KEY" ] && [ -f chart-val.pem ]; then \
 		export GITHUB_PRIVATE_KEY="$$(cat chart-val.pem)" && E2E_TEST=true go test ./test/e2e -v -timeout 5m; \
 	else \
-		E2E_TEST=true go test ./test/e2e -v -timeout 5m; \
+		E2E_TEST=true go test ./test/e2e  -count=1 -v -timeout 5m; \
 	fi
 
 fmt:

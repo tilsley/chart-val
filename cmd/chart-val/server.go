@@ -31,6 +31,17 @@ func NewServer(container *Container) *Server {
 		//nolint:errcheck // Health check response, error not actionable
 		_, _ = fmt.Fprintln(w, "ok")
 	})
+	mux.HandleFunc("GET /startup", func(w http.ResponseWriter, _ *http.Request) {
+		if container.ReadyCheck() {
+			w.WriteHeader(http.StatusOK)
+			//nolint:errcheck // Startup probe response, error not actionable
+			_, _ = fmt.Fprintln(w, "started")
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			//nolint:errcheck // Startup probe response, error not actionable
+			_, _ = fmt.Fprintln(w, "not started")
+		}
+	})
 
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", container.Config.Port),

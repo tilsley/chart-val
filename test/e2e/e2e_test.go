@@ -77,7 +77,10 @@ func TestE2E_FullWorkflow(t *testing.T) {
 		t.Fatal("GITHUB_PRIVATE_KEY environment variable required")
 	}
 
-	installationID := getEnvOrDefaultInt64("E2E_INSTALLATION_ID", getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0))
+	installationID := getEnvOrDefaultInt64(
+		"E2E_INSTALLATION_ID",
+		getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0),
+	)
 	if installationID == 0 {
 		t.Fatal("GITHUB_INSTALLATION_ID or E2E_INSTALLATION_ID environment variable required")
 	}
@@ -115,7 +118,15 @@ func TestE2E_FullWorkflow(t *testing.T) {
 
 	// Step 3: Create a draft PR
 	t.Logf("Creating draft PR")
-	prNumber, err := createDraftPR(ctx, client, owner, repo, baseBranch, testBranch, "E2E Test: Chart Changes")
+	prNumber, err := createDraftPR(
+		ctx,
+		client,
+		owner,
+		repo,
+		baseBranch,
+		testBranch,
+		"E2E Test: Chart Changes",
+	)
 	if err != nil {
 		t.Fatalf("failed to create PR: %v", err)
 	}
@@ -164,7 +175,10 @@ func TestE2E_FullWorkflow(t *testing.T) {
 
 			// Verify conclusion is success (green check)
 			if run.GetConclusion() != "success" && run.GetConclusion() != "failure" {
-				t.Errorf("Expected conclusion 'success' or 'failure', got '%s'", run.GetConclusion())
+				t.Errorf(
+					"Expected conclusion 'success' or 'failure', got '%s'",
+					run.GetConclusion(),
+				)
 			}
 
 			// Verify output exists
@@ -243,7 +257,10 @@ func TestE2E_HelmTemplateFailure(t *testing.T) {
 		t.Fatal("GITHUB_PRIVATE_KEY environment variable required")
 	}
 
-	installationID := getEnvOrDefaultInt64("E2E_INSTALLATION_ID", getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0))
+	installationID := getEnvOrDefaultInt64(
+		"E2E_INSTALLATION_ID",
+		getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0),
+	)
 	if installationID == 0 {
 		t.Fatal("GITHUB_INSTALLATION_ID or E2E_INSTALLATION_ID environment variable required")
 	}
@@ -280,7 +297,15 @@ func TestE2E_HelmTemplateFailure(t *testing.T) {
 
 	// Create draft PR
 	t.Logf("Creating draft PR")
-	prNumber, err := createDraftPR(ctx, client, owner, repo, baseBranch, testBranch, "E2E Test: Invalid Chart")
+	prNumber, err := createDraftPR(
+		ctx,
+		client,
+		owner,
+		repo,
+		baseBranch,
+		testBranch,
+		"E2E Test: Invalid Chart",
+	)
 	if err != nil {
 		t.Fatalf("failed to create PR: %v", err)
 	}
@@ -366,7 +391,10 @@ func TestE2E_NoChartChanges(t *testing.T) {
 		t.Fatal("GITHUB_PRIVATE_KEY environment variable required")
 	}
 
-	installationID := getEnvOrDefaultInt64("E2E_INSTALLATION_ID", getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0))
+	installationID := getEnvOrDefaultInt64(
+		"E2E_INSTALLATION_ID",
+		getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0),
+	)
 	if installationID == 0 {
 		t.Fatal("GITHUB_INSTALLATION_ID or E2E_INSTALLATION_ID environment variable required")
 	}
@@ -400,7 +428,15 @@ func TestE2E_NoChartChanges(t *testing.T) {
 
 	// Create draft PR
 	t.Logf("Creating draft PR")
-	prNumber, err := createDraftPR(ctx, client, owner, repo, baseBranch, testBranch, "E2E Test: No Chart Changes")
+	prNumber, err := createDraftPR(
+		ctx,
+		client,
+		owner,
+		repo,
+		baseBranch,
+		testBranch,
+		"E2E Test: No Chart Changes",
+	)
 	if err != nil {
 		t.Fatalf("failed to create PR: %v", err)
 	}
@@ -430,7 +466,13 @@ func TestE2E_NoChartChanges(t *testing.T) {
 
 	// Verify NO check runs were created
 	t.Logf("Verifying no check runs were created...")
-	checkRuns, _, err := client.Checks.ListCheckRunsForRef(ctx, owner, repo, testBranch, &github.ListCheckRunsOptions{})
+	checkRuns, _, err := client.Checks.ListCheckRunsForRef(
+		ctx,
+		owner,
+		repo,
+		testBranch,
+		&github.ListCheckRunsOptions{},
+	)
 	if err != nil {
 		t.Fatalf("failed to list check runs: %v", err)
 	}
@@ -484,7 +526,10 @@ func TestE2E_ChartWithEnvironments(t *testing.T) {
 		t.Fatal("GITHUB_PRIVATE_KEY environment variable required")
 	}
 
-	installationID := getEnvOrDefaultInt64("E2E_INSTALLATION_ID", getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0))
+	installationID := getEnvOrDefaultInt64(
+		"E2E_INSTALLATION_ID",
+		getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0),
+	)
 	if installationID == 0 {
 		t.Fatal("GITHUB_INSTALLATION_ID or E2E_INSTALLATION_ID environment variable required")
 	}
@@ -653,7 +698,10 @@ func TestE2E_UpdateExistingChart(t *testing.T) {
 		t.Fatal("GITHUB_PRIVATE_KEY environment variable required")
 	}
 
-	installationID := getEnvOrDefaultInt64("E2E_INSTALLATION_ID", getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0))
+	installationID := getEnvOrDefaultInt64(
+		"E2E_INSTALLATION_ID",
+		getEnvOrDefaultInt64("GITHUB_INSTALLATION_ID", 0),
+	)
 	if installationID == 0 {
 		t.Fatal("GITHUB_INSTALLATION_ID or E2E_INSTALLATION_ID environment variable required")
 	}
@@ -784,7 +832,8 @@ func TestE2E_UpdateExistingChart(t *testing.T) {
 				}
 
 				// Verify it's an update scenario (not all new)
-				if strings.Contains(text, "Changes detected") || strings.Contains(summary, "changes") {
+				if strings.Contains(text, "Changes detected") ||
+					strings.Contains(summary, "changes") {
 					t.Logf("✓ Check run shows actual diff (update scenario)")
 				} else {
 					t.Error("Expected check run to show changes (update scenario), got something else")
@@ -853,7 +902,11 @@ func getEnvOrDefaultInt64(key string, defaultValue int64) int64 {
 	return defaultValue
 }
 
-func setupTestServer(t *testing.T, appID, installationID int64, privateKey, webhookSecret string) *httptest.Server {
+func setupTestServer(
+	t *testing.T,
+	appID, installationID int64,
+	privateKey, webhookSecret string,
+) *httptest.Server {
 	t.Helper()
 
 	// Create logger
@@ -970,7 +1023,12 @@ func sendWebhook(
 	signature := hex.EncodeToString(mac.Sum(nil))
 
 	// Send webhook request
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(payloadBytes))
+	req, err := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
+		webhookURL,
+		bytes.NewReader(payloadBytes),
+	)
 	if err != nil {
 		return fmt.Errorf("creating request: %w", err)
 	}
@@ -994,7 +1052,11 @@ func sendWebhook(
 	return nil
 }
 
-func createTestBranch(ctx context.Context, client *github.Client, owner, repo, baseBranch, newBranch string) error {
+func createTestBranch(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, baseBranch, newBranch string,
+) error {
 	// Get base branch ref
 	baseRef, _, err := client.Git.GetRef(ctx, owner, repo, "refs/heads/"+baseBranch)
 	if err != nil {
@@ -1023,7 +1085,11 @@ func createTestBranch(ctx context.Context, client *github.Client, owner, repo, b
 	return err
 }
 
-func addTestChartChanges(ctx context.Context, client *github.Client, owner, repo, branch string) error {
+func addTestChartChanges(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, branch string,
+) error {
 	// Read Chart.yaml from fixture
 	chartContent, err := readFixture("test-chart/Chart.yaml")
 	if err != nil {
@@ -1092,20 +1158,35 @@ func addTestChartChanges(ctx context.Context, client *github.Client, owner, repo
 	return err
 }
 
-func createDraftPR(ctx context.Context, client *github.Client, owner, repo, base, head, title string) (int, error) {
+func createDraftPR(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, base, head, title string,
+) (int, error) {
 	// Check if a PR already exists with this head branch
-	existingPRs, _, err := client.PullRequests.List(ctx, owner, repo, &github.PullRequestListOptions{
-		State: "all",
-		Head:  fmt.Sprintf("%s:%s", owner, head),
-		Base:  base,
-	})
+	existingPRs, _, err := client.PullRequests.List(
+		ctx,
+		owner,
+		repo,
+		&github.PullRequestListOptions{
+			State: "all",
+			Head:  fmt.Sprintf("%s:%s", owner, head),
+			Base:  base,
+		},
+	)
 	if err == nil && len(existingPRs) > 0 {
 		// Close any existing PRs with this head branch
 		for _, existingPR := range existingPRs {
 			state := "closed"
-			_, _, _ = client.PullRequests.Edit(ctx, owner, repo, existingPR.GetNumber(), &github.PullRequest{
-				State: &state,
-			})
+			_, _, _ = client.PullRequests.Edit(
+				ctx,
+				owner,
+				repo,
+				existingPR.GetNumber(),
+				&github.PullRequest{
+					State: &state,
+				},
+			)
 		}
 	}
 
@@ -1134,7 +1215,13 @@ func waitForCheckRuns(
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {
-		result, _, err := client.Checks.ListCheckRunsForRef(ctx, owner, repo, ref, &github.ListCheckRunsOptions{})
+		result, _, err := client.Checks.ListCheckRunsForRef(
+			ctx,
+			owner,
+			repo,
+			ref,
+			&github.ListCheckRunsOptions{},
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -1164,11 +1251,23 @@ func getPRComments(
 	owner, repo string,
 	prNumber int,
 ) ([]*github.IssueComment, error) {
-	comments, _, err := client.Issues.ListComments(ctx, owner, repo, prNumber, &github.IssueListCommentsOptions{})
+	comments, _, err := client.Issues.ListComments(
+		ctx,
+		owner,
+		repo,
+		prNumber,
+		&github.IssueListCommentsOptions{},
+	)
 	return comments, err
 }
 
-func closePR(ctx context.Context, client *github.Client, owner, repo string, prNumber int, t *testing.T) {
+func closePR(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo string,
+	prNumber int,
+	t *testing.T,
+) {
 	t.Logf("Closing PR #%d", prNumber)
 	state := "closed"
 	_, _, err := client.PullRequests.Edit(ctx, owner, repo, prNumber, &github.PullRequest{
@@ -1179,7 +1278,12 @@ func closePR(ctx context.Context, client *github.Client, owner, repo string, prN
 	}
 }
 
-func cleanupBranch(ctx context.Context, client *github.Client, owner, repo, branch string, t *testing.T) {
+func cleanupBranch(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, branch string,
+	t *testing.T,
+) {
 	t.Logf("Deleting test branch: %s", branch)
 	_, err := client.Git.DeleteRef(ctx, owner, repo, "refs/heads/"+branch)
 	if err != nil {
@@ -1187,11 +1291,21 @@ func cleanupBranch(ctx context.Context, client *github.Client, owner, repo, bran
 	}
 }
 
-func cleanupOrphanedBranches(ctx context.Context, client *github.Client, owner, repo string, t *testing.T) {
+func cleanupOrphanedBranches(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo string,
+	t *testing.T,
+) {
 	// List all branches
-	branches, _, err := client.Repositories.ListBranches(ctx, owner, repo, &github.BranchListOptions{
-		ListOptions: github.ListOptions{PerPage: 100},
-	})
+	branches, _, err := client.Repositories.ListBranches(
+		ctx,
+		owner,
+		repo,
+		&github.BranchListOptions{
+			ListOptions: github.ListOptions{PerPage: 100},
+		},
+	)
 	if err != nil {
 		t.Logf("Warning: failed to list branches for cleanup: %v", err)
 		return
@@ -1246,10 +1360,17 @@ func addInvalidChart(ctx context.Context, client *github.Client, owner, repo, br
 	return err
 }
 
-func addNonChartChanges(ctx context.Context, client *github.Client, owner, repo, branch string) error {
+func addNonChartChanges(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, branch string,
+) error {
 	// Update README
 	readmePath := "README.md"
-	readmeContent := fmt.Sprintf("# Test Repository\n\nUpdated by E2E test at %s\n", time.Now().Format(time.RFC3339))
+	readmeContent := fmt.Sprintf(
+		"# Test Repository\n\nUpdated by E2E test at %s\n",
+		time.Now().Format(time.RFC3339),
+	)
 
 	// Get existing README if it exists
 	existingFile, _, _, _ := client.Repositories.GetContents(
@@ -1278,7 +1399,11 @@ func addNonChartChanges(ctx context.Context, client *github.Client, owner, repo,
 	return err
 }
 
-func addChartWithEnvironments(ctx context.Context, client *github.Client, owner, repo, branch string) error {
+func addChartWithEnvironments(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, branch string,
+) error {
 	chartName := "multi-env-app"
 
 	// Define all files to create from fixtures
@@ -1311,7 +1436,11 @@ func addChartWithEnvironments(ctx context.Context, client *github.Client, owner,
 	return nil
 }
 
-func updateChartValues(ctx context.Context, client *github.Client, owner, repo, branch string) error {
+func updateChartValues(
+	ctx context.Context,
+	client *github.Client,
+	owner, repo, branch string,
+) error {
 	chartName := "multi-env-app"
 
 	// Update dev environment values
@@ -1368,7 +1497,9 @@ func updateChartValues(ctx context.Context, client *github.Client, owner, repo, 
 	}
 
 	opts = &github.RepositoryContentFileOptions{
-		Message: github.Ptr("Update prod environment - bump version to 2.0.0 and increase replicas"),
+		Message: github.Ptr(
+			"Update prod environment - bump version to 2.0.0 and increase replicas",
+		),
 		Content: prodValuesContent,
 		Branch:  github.Ptr(branch),
 		SHA:     existingFile.SHA,
@@ -1376,4 +1507,83 @@ func updateChartValues(ctx context.Context, client *github.Client, owner, repo, 
 
 	_, _, err = client.Repositories.UpdateFile(ctx, owner, repo, prodValuesPath, opts)
 	return err
+}
+
+// TestE2E_StartupProbe verifies the GET /startup endpoint returns the correct
+// status based on the ReadyCheck function. No GitHub credentials needed.
+func TestE2E_StartupProbe(t *testing.T) {
+	if os.Getenv("E2E_TEST") != e2eTestEnvValue {
+		t.Skip("Skipping E2E test. Set E2E_TEST=true to run.")
+	}
+
+	t.Run("started when check returns true", func(t *testing.T) {
+		mux := http.NewServeMux()
+		readyCheck := func() bool { return true }
+		registerProbeRoutes(mux, readyCheck)
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		resp, err := http.Get(srv.URL + "/startup")
+		if err != nil {
+			t.Fatalf("GET /startup failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected 200, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("not started when check returns false", func(t *testing.T) {
+		mux := http.NewServeMux()
+		readyCheck := func() bool { return false }
+		registerProbeRoutes(mux, readyCheck)
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		resp, err := http.Get(srv.URL + "/startup")
+		if err != nil {
+			t.Fatalf("GET /startup failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusServiceUnavailable {
+			t.Errorf("expected 503, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("health always returns 200", func(t *testing.T) {
+		mux := http.NewServeMux()
+		readyCheck := func() bool { return false }
+		registerProbeRoutes(mux, readyCheck)
+		srv := httptest.NewServer(mux)
+		defer srv.Close()
+
+		resp, err := http.Get(srv.URL + "/health")
+		if err != nil {
+			t.Fatalf("GET /health failed: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected 200, got %d", resp.StatusCode)
+		}
+	})
+}
+
+// registerProbeRoutes adds /health and /startup to a mux, mirroring cmd/chart-val/server.go.
+func registerProbeRoutes(mux *http.ServeMux, readyCheck func() bool) {
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintln(w, "ok")
+	})
+	mux.HandleFunc("GET /startup", func(w http.ResponseWriter, _ *http.Request) {
+		if readyCheck() {
+			w.WriteHeader(http.StatusOK)
+			fmt.Fprintln(w, "started")
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintln(w, "not started")
+		}
+	})
 }

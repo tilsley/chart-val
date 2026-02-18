@@ -7,15 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
-	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/nathantilsley/chart-val/internal/diff/domain"
+	"github.com/nathantilsley/chart-val/internal/platform/gitrepo"
 )
 
 // ErrNotAnApplication is returned when a manifest is not an Argo Application.
@@ -25,14 +24,11 @@ var ErrNotAnApplication = errors.New("not an Application")
 // manifests from a locally cloned Git repository. It scans the entire repo
 // for Application files and extracts environment names from directory paths.
 type Adapter struct {
-	repoURL       string        // Git repository URL
-	localPath     string        // Local filesystem path for clone
-	syncInterval  time.Duration // How often to sync the repo
-	folderPattern string        // Folder structure pattern (e.g., "{chartName}/{envName}")
-	chartDir      string        // Top-level chart directory (e.g., "charts")
+	repoPath      string // Local filesystem path of the cloned repo
+	folderPattern string // Folder structure pattern (e.g., "{chartName}/{envName}")
+	chartDir      string // Top-level chart directory (e.g., "charts")
 
 	mu     sync.RWMutex         // Protects index during updates
-	stopCh chan struct{}        // Signal to stop background sync
 	index  map[string][]AppData // Cache: chartName -> list of apps
 	logger *slog.Logger
 }
@@ -46,118 +42,33 @@ type AppData struct {
 	RepoURL     string   // From spec.source.repoURL
 }
 
-// New creates a new Argo apps adapter. It performs an initial clone/sync
-// and starts a background goroutine to keep the repository updated.
+// New creates a new Argo apps adapter. It registers an OnSync callback with
+// the provided GitRepo so the index is rebuilt after every successful pull.
 func New(
-	repoURL, localPath string,
-	syncInterval time.Duration,
+	repo *gitrepo.GitRepo,
 	folderPattern string,
 	logger *slog.Logger,
 	chartDir string,
-) (*Adapter, error) {
+) *Adapter {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 
 	a := &Adapter{
-		repoURL:       repoURL,
-		localPath:     localPath,
-		syncInterval:  syncInterval,
+		repoPath:      repo.Path(),
 		folderPattern: folderPattern,
 		chartDir:      chartDir,
-		stopCh:        make(chan struct{}),
 		index:         make(map[string][]AppData),
 		logger:        logger,
 	}
 
-	// Initial clone/sync
-	a.logger.Info("initializing argo apps repository", "repoURL", repoURL, "localPath", localPath)
-	if err := a.initRepo(); err != nil {
-		return nil, fmt.Errorf("initializing repo: %w", err)
-	}
-
-	// Build initial index
-	a.logger.Info("scanning repo for argo applications")
-	if err := a.rebuildIndex(); err != nil {
-		return nil, fmt.Errorf("building initial index: %w", err)
-	}
-
-	// Start background syncer
-	go a.syncLoop()
-	a.logger.Info("argo apps adapter started", "syncInterval", syncInterval)
-
-	return a, nil
-}
-
-// initRepo clones the repository if it doesn't exist, or pulls latest if it does.
-func (a *Adapter) initRepo() error {
-	gitDir := filepath.Join(a.localPath, ".git")
-
-	// Check if repo already exists
-	if _, err := os.Stat(gitDir); err == nil {
-		a.logger.Info("repository already exists, pulling latest")
-		return a.pullRepo()
-	}
-
-	// Clone fresh
-	a.logger.Info("cloning repository", "repoURL", a.repoURL)
-	//nolint:gosec // G204: repoURL is from trusted config, not user input
-	cmd := exec.CommandContext(context.Background(), "git", "clone", "--depth=1", a.repoURL, a.localPath)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git clone failed: %w\noutput: %s", err, output)
-	}
-
-	return nil
-}
-
-// pullRepo pulls the latest changes from the remote repository.
-func (a *Adapter) pullRepo() error {
-	//nolint:gosec // G204: localPath is from trusted config, not user input
-	cmd := exec.CommandContext(context.Background(), "git", "-C", a.localPath, "pull", "--ff-only")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("git pull failed: %w\noutput: %s", err, output)
-	}
-	return nil
-}
-
-// syncLoop runs in the background and periodically syncs the repository.
-func (a *Adapter) syncLoop() {
-	ticker := time.NewTicker(a.syncInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ticker.C:
-			a.sync()
-		case <-a.stopCh:
-			a.logger.Info("stopping argo apps sync loop")
-			return
+	repo.OnSync(func() {
+		if err := a.rebuildIndex(); err != nil {
+			a.logger.Error("failed to rebuild argo index", "error", err)
 		}
-	}
-}
+	})
 
-// sync performs a git pull and rebuilds the index.
-func (a *Adapter) sync() {
-	a.logger.Info("syncing argo apps repository")
-
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	// Pull latest changes
-	if err := a.pullRepo(); err != nil {
-		a.logger.Error("failed to pull repository", "error", err)
-		return
-	}
-
-	// Rebuild index
-	if err := a.rebuildIndex(); err != nil {
-		a.logger.Error("failed to rebuild index", "error", err)
-		return
-	}
-
-	a.logger.Info("argo apps repository synced successfully", "uniqueCharts", len(a.index))
+	return a
 }
 
 // rebuildIndex scans the entire repo for Application manifests and builds an index.
@@ -166,7 +77,7 @@ func (a *Adapter) rebuildIndex() error {
 	appCount := 0
 
 	// Walk the entire repository looking for YAML files
-	err := filepath.Walk(a.localPath, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(a.repoPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			// Log errors accessing individual files but continue scanning
 			a.logger.Warn("error accessing path, skipping", "path", path, "error", err)
@@ -195,7 +106,10 @@ func (a *Adapter) rebuildIndex() error {
 		return err
 	}
 
+	a.mu.Lock()
 	a.index = index
+	a.mu.Unlock()
+
 	a.logger.Info("index rebuilt", "totalApps", appCount, "uniqueCharts", len(index))
 
 	return nil
@@ -340,14 +254,15 @@ func (a *Adapter) GetEnvironmentConfig(
 		})
 	}
 
-	a.logger.Info("returning chart config", "chartName", chartName, "envCount", len(config.Environments))
+	a.logger.Info(
+		"returning chart config",
+		"chartName",
+		chartName,
+		"envCount",
+		len(config.Environments),
+	)
 
 	return config, nil
-}
-
-// Stop signals the background sync loop to stop.
-func (a *Adapter) Stop() {
-	close(a.stopCh)
 }
 
 // extractFromFolderStructure extracts chart name and environment from file path
@@ -357,7 +272,7 @@ func (a *Adapter) Stop() {
 //	→ chartName="my-app", env="prod"
 func (a *Adapter) extractFromFolderStructure(filePath string) (chartName, env string, err error) {
 	// Get relative path from repo root
-	relPath, err := filepath.Rel(a.localPath, filePath)
+	relPath, err := filepath.Rel(a.repoPath, filePath)
 	if err != nil {
 		return "", "", fmt.Errorf("getting relative path: %w", err)
 	}

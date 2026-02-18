@@ -2,6 +2,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -21,6 +22,7 @@ import (
 	"github.com/nathantilsley/chart-val/internal/diff/ports"
 	"github.com/nathantilsley/chart-val/internal/platform/config"
 	ghclient "github.com/nathantilsley/chart-val/internal/platform/github"
+	"github.com/nathantilsley/chart-val/internal/platform/gitrepo"
 	"github.com/nathantilsley/chart-val/internal/platform/telemetry"
 )
 
@@ -31,6 +33,7 @@ type Container struct {
 	GitHubClient   *gogithub.Client
 	DiffService    ports.DiffUseCase
 	WebhookHandler *githubin.WebhookHandler
+	ReadyCheck     func() bool
 }
 
 // NewContainer builds and wires all dependencies.
@@ -64,6 +67,9 @@ func NewContainer(
 	// Filesystem adapter - discovers from chart's env/ folder
 	filesystemEnvConfig := fsenv.New(sourceCtrl, cfg.ChartDir, cfg.EnvDir, cfg.ValuesFileSuffix)
 
+	// Default readiness: always ready (no argo repo to wait for)
+	readyCheck := func() bool { return true }
+
 	// Optionally create Argo adapter (source of truth when available)
 	var argoEnvConfig ports.EnvironmentConfigPort
 	if cfg.ArgoAppsRepo != "" {
@@ -72,18 +78,18 @@ func NewContainer(
 			"syncInterval", cfg.ArgoAppsSyncInterval,
 			"folderPattern", cfg.ArgoAppsFolderPattern,
 		)
-		adapter, err := argoenv.New(
-			cfg.ArgoAppsRepo,
-			cfg.ArgoAppsLocalPath,
-			cfg.ArgoAppsSyncInterval,
-			cfg.ArgoAppsFolderPattern,
-			log,
-			cfg.ChartDir,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("creating argo environment config adapter: %w", err)
+
+		repo := gitrepo.New(cfg.ArgoAppsRepo, cfg.ArgoAppsLocalPath, cfg.ArgoAppsSyncInterval, log)
+
+		// Argo adapter registers its OnSync callback in its constructor
+		argoEnvConfig = argoenv.New(repo, cfg.ArgoAppsFolderPattern, log, cfg.ChartDir)
+
+		// Start repo (initial clone + first index build via callback)
+		if err := repo.Start(context.Background()); err != nil {
+			return nil, fmt.Errorf("starting argo apps repo: %w", err)
 		}
-		argoEnvConfig = adapter
+
+		readyCheck = repo.Ready
 	} else {
 		log.Info("argo apps not configured, using filesystem discovery only")
 	}
@@ -119,5 +125,6 @@ func NewContainer(
 		GitHubClient:   githubClient,
 		DiffService:    diffService,
 		WebhookHandler: webhookHandler,
+		ReadyCheck:     readyCheck,
 	}, nil
 }
