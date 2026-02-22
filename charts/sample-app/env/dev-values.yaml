@@ -1,0 +1,20 @@
+replicaCount: 1
+
+image:
+  tag: "1.21.0-dev"
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+env:
+  LOG_LEVEL: "debug"
+  ENVIRONMENT: "development"
+  DEBUG_MODE: "true"
+
+autoscaling:
+  enabled: false
